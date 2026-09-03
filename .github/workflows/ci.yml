@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run unit tests
+        run: node --test
+
+  no-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if an OpenRouter key is committed
+        run: |
+          if grep -R --include='*' -n 'sk-or-v1-[A-Za-z0-9]' . \
+              --exclude-dir=.git; then
+            echo "An OpenRouter API key literal was found in the tree. This app only ever accepts a key at runtime from the user; one must never be committed." >&2
+            exit 1
+          fi
+          echo "No committed key literal found."

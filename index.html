@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenRouter Model Picker</title>
+<meta name="description" content="Pick the right OpenRouter model for a task by live price and benchmark data, then get a free-model-judged recommendation in plain language.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>OpenRouter Model Picker</h1>
+      <p>Describe a task, set a price ceiling and a quality bar, and pull every OpenRouter model that fits with its live price and benchmark data. A free model then reads the shortlist and writes up which one it would use and why.</p>
+    </div>
+  </header>
+
+  <section class="panel" id="config-panel">
+    <h2>OpenRouter API key</h2>
+    <div class="field-row">
+      <div class="field" style="flex: 1 1 24rem">
+        <label for="api-key">Your key (stored only in this browser&rsquo;s local storage, sent only to openrouter.ai)</label>
+        <input type="password" id="api-key" placeholder="sk-or-v1-&hellip;" autocomplete="off">
+      </div>
+      <button type="button" class="secondary" id="forget-key">Forget key</button>
+    </div>
+    <p class="status" id="key-status">No key saved yet. Get one at <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/settings/keys</a>.</p>
+  </section>
+
+  <section class="panel" id="query-panel">
+    <h2>Task and preferences</h2>
+    <div class="field-row">
+      <div class="field">
+        <label for="task-preset">Task preset</label>
+        <select id="task-preset"></select>
+      </div>
+      <div class="field" style="flex: 2 1 20rem">
+        <label for="task-desc">Task description (editable)</label>
+        <textarea id="task-desc"></textarea>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field checkbox">
+        <input type="checkbox" id="free-only" checked>
+        <label for="free-only">Free models only</label>
+      </div>
+      <div class="field">
+        <label for="max-prompt">Max prompt price ($ / 1M tokens)</label>
+        <input type="number" id="max-prompt" min="0" step="0.01" value="0" disabled>
+      </div>
+      <div class="field">
+        <label for="max-completion">Max completion price ($ / 1M tokens)</label>
+        <input type="number" id="max-completion" min="0" step="0.01" value="0" disabled>
+      </div>
+      <div class="field">
+        <label for="quality-pref">Optimize for</label>
+        <select id="quality-pref">
+          <option value="quality" selected>Best quality</option>
+          <option value="balanced">Balanced (quality per dollar)</option>
+          <option value="cheapest">Cheapest</option>
+        </select>
+      </div>
+    </div>
+    <button type="button" id="find-models">Find models</button>
+    <p class="status" id="query-status"></p>
+  </section>
+
+  <section class="panel" id="rec-panel" hidden>
+    <h2>Recommendation</h2>
+    <div id="recommendation"></div>
+  </section>
+
+  <section class="panel" id="results-panel" hidden>
+    <h2>All matching models</h2>
+    <p class="status" id="results-count"></p>
+    <div class="table-wrap">
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th data-key="name">Model</th>
+            <th data-key="pricing.promptPerM" class="num">$/M in</th>
+            <th data-key="pricing.completionPerM" class="num">$/M out</th>
+            <th data-key="contextLength" class="num">Context</th>
+            <th data-key="benchmarks.intelligenceIndex" class="num">Intelligence</th>
+            <th data-key="benchmarks.codingIndex" class="num">Coding</th>
+            <th data-key="benchmarks.agenticIndex" class="num">Agentic</th>
+            <th data-key="benchmarks.gpqaAccuracy" class="num">GPQA</th>
+            <th data-key="benchmarks.tauBenchAccuracy" class="num">Tau-bench</th>
+            <th data-key="benchmarks.searchAvg" class="num">Search</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p>No backend. Every request goes from this page directly to openrouter.ai. Model list and pricing from <code>/api/v1/models</code>; benchmark scores (Artificial Analysis intelligence/coding/agentic indices, and OpenRouter&rsquo;s own GPQA-Diamond, tau-bench-airline, and web-search evals) from <code>/api/v1/benchmarks</code>. The judging call always targets a <code>:free</code>-suffixed model, so getting the recommendation never costs anything. MIT licensed.</p>
+  </footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "openrouter-model-picker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cost- and benchmark-aware OpenRouter model picker. Static app, zero dependencies.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
