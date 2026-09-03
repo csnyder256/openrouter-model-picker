@@ -11,6 +11,7 @@ import {
   findPreset,
   buildJudgeMessages,
   isRetryableJudgeStatus,
+  resolveTaskDescription,
 } from "../lib/match.js";
 
 test("perMillion converts per-token USD strings to per-million USD", () => {
@@ -18,6 +19,14 @@ test("perMillion converts per-token USD strings to per-million USD", () => {
   assert.equal(perMillion("0"), 0);
   assert.equal(perMillion(undefined), null);
   assert.equal(perMillion(""), null);
+});
+
+test("perMillion treats a negative price as unknown, not as a real negative dollar figure", () => {
+  // OpenRouter's own meta-routers (openrouter/auto, openrouter/fusion, etc.)
+  // report pricing "-1" to mean "variable, priced by whichever model gets
+  // picked" (confirmed live). A negative number is never a real price.
+  assert.equal(perMillion("-1"), null);
+  assert.equal(perMillion("-0.0001"), null);
 });
 
 test("mergeModelsWithBenchmarks joins on canonical_slug and never invents a zero", () => {
@@ -65,6 +74,26 @@ test("mergeModelsWithBenchmarks joins on canonical_slug and never invents a zero
   assert.equal(bar.benchmarks.gpqaAccuracy, null);
   assert.equal(bar.benchmarks.searchAvg, null);
   assert.equal(bar.isFree, true);
+});
+
+test("mergeModelsWithBenchmarks maps a meta-router's \"-1\" pricing sentinel to null, not a negative price", () => {
+  const models = [
+    {
+      id: "openrouter/auto",
+      canonical_slug: "openrouter/auto-20260101",
+      name: "Auto Router",
+      context_length: 2000000,
+      architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+      pricing: { prompt: "-1", completion: "-1" },
+      supported_parameters: [],
+    },
+  ];
+  const merged = mergeModelsWithBenchmarks(models, [], []);
+  assert.equal(merged[0].pricing.promptPerM, null);
+  assert.equal(merged[0].pricing.completionPerM, null);
+  // and it must therefore be excluded from a free-only (ceiling 0) search,
+  // the same as any other candidate with an unknown price.
+  assert.equal(filterByPriceCeiling(merged, 0, 0).length, 0);
 });
 
 test("filterByTask enforces modality requirements", () => {
@@ -158,6 +187,16 @@ test("isRetryableJudgeStatus: only 401 (bad key) stops the fallback ladder", () 
   assert.equal(isRetryableJudgeStatus(403), true); // model restricts itself to agentic callers (seen live)
   assert.equal(isRetryableJudgeStatus(404), true);
   assert.equal(isRetryableJudgeStatus(500), true);
+});
+
+test("resolveTaskDescription never substitutes the custom preset's own placeholder hint as a task", () => {
+  const custom = findPreset("custom");
+  const coding = findPreset("coding");
+  assert.equal(resolveTaskDescription(custom, ""), "");
+  assert.equal(resolveTaskDescription(custom, "   "), "");
+  assert.equal(resolveTaskDescription(custom, "translate this legal contract"), "translate this legal contract");
+  // a real preset's hint IS an actual task, so it's a fine fallback when cleared
+  assert.equal(resolveTaskDescription(coding, ""), "Write, complete, or generate code.");
 });
 
 test("buildJudgeMessages includes the task, preferences, and every shortlisted model id", () => {

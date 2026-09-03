@@ -11,6 +11,7 @@ import {
   nextFallbackModel,
   buildJudgeMessages,
   isRetryableJudgeStatus,
+  resolveTaskDescription,
 } from "./lib/match.js";
 
 const KEY_STORAGE = "orpicker.apiKey";
@@ -94,7 +95,7 @@ function readPreferences() {
   const maxCompletionPerM = el.maxCompletion.value === "" ? null : Number(el.maxCompletion.value);
   return {
     preset,
-    taskDescription: el.taskDesc.value.trim() || preset.hint,
+    taskDescription: resolveTaskDescription(preset, el.taskDesc.value),
     maxPromptPerM,
     maxCompletionPerM,
     qualityPreference: el.qualityPref.value,
@@ -203,8 +204,14 @@ async function onFindModels() {
   el.resultsPanel.hidden = true;
 
   try {
-    el.queryStatus.textContent = "Fetching live model list and benchmark data…";
     const prefs = readPreferences();
+    if (!prefs.taskDescription) {
+      el.queryStatus.textContent = "Describe the task in the text box first.";
+      el.queryStatus.classList.add("err");
+      el.findBtn.disabled = false;
+      return;
+    }
+    el.queryStatus.textContent = "Fetching live model list and benchmark data…";
     const [merged, rawModels] = await Promise.all([fetchAllData(apiKey), fetchModels(apiKey)]);
 
     let candidates = filterByTask(merged, prefs.preset);
