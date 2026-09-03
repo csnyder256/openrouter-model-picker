@@ -160,6 +160,23 @@ test("sortCandidates: balanced favors quality-per-dollar over raw quality", () =
   assert.equal(sorted[0].id, "free-and-decent");
 });
 
+test("sortCandidates: balanced breaks ties between multiple free candidates by raw metric, never NaN-orders them", () => {
+  // A quality-per-dollar ratio is Infinity for every $0 candidate, and
+  // Infinity minus Infinity is NaN, which is not a valid comparator result.
+  // This is the app's own default (free-only), so it must rank correctly.
+  const preset = findPreset("coding");
+  const candidates = [
+    { id: "free-low", benchmarks: { codingIndex: 20 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "free-high", benchmarks: { codingIndex: 90 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "free-mid", benchmarks: { codingIndex: 50 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+  ];
+  const sorted = sortCandidates(candidates, preset, "balanced");
+  assert.deepEqual(
+    sorted.map((c) => c.id),
+    ["free-high", "free-mid", "free-low"]
+  );
+});
+
 test("rankFreeModels only returns :free models, reasoning-capable ones first", () => {
   const models = [
     { id: "a/no-free", context_length: 999999, supported_parameters: ["reasoning"] },
@@ -214,4 +231,21 @@ test("buildJudgeMessages includes the task, preferences, and every shortlisted m
   assert.match(msgs[1].content, /write a sorting function/);
   assert.match(msgs[1].content, /acme\/foo/);
   assert.match(msgs[0].content, /Do not just output a score/);
+});
+
+test("buildJudgeMessages never describes a model with an unknown price as $0.00", () => {
+  // openrouter/auto and similar meta-routers report a null (unknown, not
+  // free) price. Telling the judge LLM "$0.00" would be a false claim.
+  const shortlist = [
+    {
+      id: "openrouter/auto",
+      name: "Auto Router",
+      description: "Routes to whichever model fits.",
+      pricing: { promptPerM: null, completionPerM: null },
+      benchmarks: { intelligenceIndex: 80, codingIndex: null, agenticIndex: null, gpqaAccuracy: null, tauBenchAccuracy: null, searchAvg: null },
+    },
+  ];
+  const msgs = buildJudgeMessages("write code", { qualityPreference: "quality" }, shortlist);
+  assert.doesNotMatch(msgs[1].content, /\$0\.00/);
+  assert.match(msgs[1].content, /unknown/);
 });
