@@ -1,5 +1,5 @@
 import { fetchModels, fetchBenchmarks, chatCompletion, OpenRouterError } from "./lib/or-client.js";
-import { renderMarkdownLite } from "./lib/markdown-lite.js";
+import { renderMarkdownLite, escapeHtml } from "./lib/markdown-lite.js";
 import {
   TASK_PRESETS,
   findPreset,
@@ -121,7 +121,7 @@ function renderTable(candidates) {
   for (const c of candidates) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td class="model">${c.name}${c.isFree ? '<span class="free-badge">free</span>' : ""}<span class="id">${c.id}</span></td>
+      <td class="model">${escapeHtml(c.name)}${c.isFree ? '<span class="free-badge">free</span>' : ""}<span class="id">${escapeHtml(c.id)}</span></td>
       <td class="num ${c.pricing.promptPerM == null ? "na" : ""}">${fmtPrice(c.pricing.promptPerM) || "?"}</td>
       <td class="num ${c.pricing.completionPerM == null ? "na" : ""}">${fmtPrice(c.pricing.completionPerM) || "?"}</td>
       <td class="num">${c.contextLength ? c.contextLength.toLocaleString() : ""}</td>
@@ -233,7 +233,7 @@ async function onFindModels() {
     const judged = await runJudge(apiKey, rawModels, prefs.taskDescription, prefs, shortlist);
 
     el.recommendation.innerHTML =
-      `<div class="who">Judged by ${judged.modelId}${judged.attempts.length > 1 ? ` (after ${judged.attempts.length - 1} unavailable free model${judged.attempts.length > 2 ? "s" : ""})` : ""}. This call was free.</div>` +
+      `<div class="who">Judged by ${escapeHtml(judged.modelId)}${judged.attempts.length > 1 ? ` (after ${judged.attempts.length - 1} unavailable free model${judged.attempts.length > 2 ? "s" : ""})` : ""}. This call was free.</div>` +
       renderMarkdownLite(judged.text);
     el.recPanel.hidden = false;
     el.queryStatus.textContent = `Found ${candidates.length} matching models.`;

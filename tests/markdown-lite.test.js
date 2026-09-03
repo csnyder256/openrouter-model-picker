@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderMarkdownLite } from "../lib/markdown-lite.js";
+import { renderMarkdownLite, escapeHtml } from "../lib/markdown-lite.js";
 
 test("renderMarkdownLite bolds **text** and escapes raw HTML", () => {
   const out = renderMarkdownLite("**Recommendation: GLM 5.2** beats <script>alert(1)</script>.");
@@ -24,4 +24,16 @@ test("renderMarkdownLite renders a block of '- ' lines as a list", () => {
 test("renderMarkdownLite joins single newlines within a paragraph with <br>", () => {
   const out = renderMarkdownLite("line one\nline two");
   assert.match(out, /line one<br>line two/);
+});
+
+// `escapeHtml` is exported because app.js's renderTable interpolates the model
+// `name` and `id` straight from OpenRouter's /models response into innerHTML.
+// Those are third-party strings, so they need the same treatment the judge's
+// prose already gets.
+test("escapeHtml neutralises a model name carrying markup", () => {
+  const hostile = '<img src=x onerror="fetch(0)">Nano';
+  const out = escapeHtml(hostile);
+  assert.doesNotMatch(out, /<img/);
+  assert.match(out, /&lt;img/);
+  assert.equal(out.includes(">"), false);
 });
