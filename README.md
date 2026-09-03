@@ -12,6 +12,8 @@
   <a href="SECURITY.md"><img alt="no backend" src="https://img.shields.io/badge/backend-none-8957e5.svg"></a>
 </p>
 
+![OpenRouter Model Picker: live pricing and benchmarks joined, a free model tells you which one to use](og.png)
+
 ---
 
 ## What it does
