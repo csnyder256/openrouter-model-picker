@@ -1,0 +1,12 @@
+# Keep npm dependencies and CI actions patched automatically.
+# The existing CI workflow gates every Dependabot PR before merge.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
