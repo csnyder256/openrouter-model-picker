@@ -159,13 +159,17 @@ function initTableSort() {
   });
 }
 
+// Three requests per search: /models once, plus one per benchmark source.
+// The raw /models rows are returned too, because the judge's fallback ladder
+// ranks free models from them; fetching the catalog a second time for that
+// would download the whole model list twice.
 async function fetchAllData(apiKey) {
   const [models, aaRows, orRows] = await Promise.all([
     fetchModels(apiKey),
     fetchBenchmarks(apiKey, "artificial-analysis"),
     fetchBenchmarks(apiKey, "openrouter"),
   ]);
-  return mergeModelsWithBenchmarks(models, aaRows, orRows);
+  return { merged: mergeModelsWithBenchmarks(models, aaRows, orRows), rawModels: models };
 }
 
 async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shortlist) {
@@ -212,7 +216,7 @@ async function onFindModels() {
       return;
     }
     el.queryStatus.textContent = "Fetching live model list and benchmark data…";
-    const [merged, rawModels] = await Promise.all([fetchAllData(apiKey), fetchModels(apiKey)]);
+    const { merged, rawModels } = await fetchAllData(apiKey);
 
     let candidates = filterByTask(merged, prefs.preset);
     candidates = filterByPriceCeiling(candidates, prefs.maxPromptPerM, prefs.maxCompletionPerM);
