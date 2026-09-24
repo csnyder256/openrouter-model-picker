@@ -1,12 +1,16 @@
-# Keep npm dependencies and CI actions patched automatically.
-# The existing CI workflow gates every Dependabot PR before merge.
+# Keep CI actions patched automatically. The CI workflow gates every
+# Dependabot PR before merge.
+#
+# Updates are grouped so a routine week produces one PR per ecosystem
+# instead of one PR per bump. The app itself has zero runtime or dev
+# dependencies (package.json exists only for `node --test`), so there is
+# no npm entry to watch.
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
