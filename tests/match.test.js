@@ -254,11 +254,11 @@ test("buildJudgeMessages never describes a model with an unknown price as $0.00"
 test("sortCandidates: a preset whose metric is null still ranks, it does not return arrival order", () => {
   // Image Generation / Text-to-Speech used to declare primaryMetric: null,
   // which made every "Optimize for" mode return the /models arrival order
-  // unchanged. The UI offers three modes for those presets, so the order is
-  // now driven by the same intelligence index their real (multimodal) models
-  // report. This test also covers the general null-metric path directly, so a
-  // future preset that legitimately has no metric cannot silently regress to
-  // unsorted output.
+  // unchanged. No benchmark here measures image fidelity or speech quality, so
+  // those presets now rank on the general intelligence index as a proxy. This
+  // test covers the null-metric path directly, so a future preset that
+  // legitimately has no metric cannot silently regress to unsorted output
+  // either.
   const noMetricPreset = { id: "synthetic", primaryMetric: null };
   const candidates = [
     { id: "z/weak", benchmarks: { intelligenceIndex: 20, codingIndex: null }, pricing: { promptPerM: 0, completionPerM: 0 } },
@@ -307,7 +307,9 @@ test("sortCandidates: fully tied candidates resolve deterministically, independe
 test("TASK_PRESETS: every preset names a real benchmark metric", () => {
   // A null primaryMetric is a silent trap: the sort modes all no-op and the
   // judge shortlist is sliced from arbitrary order. Every shipped preset must
-  // name a metric that mergeModelsWithBenchmarks actually populates.
+  // name a metric that mergeModelsWithBenchmarks actually populates -- which
+  // for the two output-modality presets is a general proxy, since no benchmark
+  // in this app measures image or speech quality.
   const knownMetrics = new Set([
     "intelligenceIndex",
     "codingIndex",
