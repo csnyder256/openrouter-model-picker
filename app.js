@@ -138,8 +138,17 @@ function renderTable(candidates) {
   el.tbody.innerHTML = "";
   for (const c of candidates) {
     const tr = document.createElement("tr");
+    // A model with $0 token pricing that is billed per artifact (per song,
+    // per clip) gets no "free" badge, because that badge is a claim about
+    // what the call costs and this call is not free. It gets its own marker
+    // instead, so a $0.00 row that is not free never reads as a bug.
+    const badge = c.isFree
+      ? '<span class="free-badge">free</span>'
+      : c.outOfBandPricing
+        ? '<span class="metered-badge" title="Token price is $0, but this model bills per use. See its description.">metered</span>'
+        : "";
     tr.innerHTML = `
-      <td class="model">${escapeHtml(c.name)}${c.isFree ? '<span class="free-badge">free</span>' : ""}<span class="id">${escapeHtml(c.id)}</span></td>
+      <td class="model">${escapeHtml(c.name)}${badge}<span class="id">${escapeHtml(c.id)}</span></td>
       <td class="num ${c.pricing.promptPerM == null ? "na" : ""}">${fmtPrice(c.pricing.promptPerM) || "?"}</td>
       <td class="num ${c.pricing.completionPerM == null ? "na" : ""}">${fmtPrice(c.pricing.completionPerM) || "?"}</td>
       <td class="num">${c.contextLength ? c.contextLength.toLocaleString() : ""}</td>
@@ -301,7 +310,7 @@ async function onFindModels() {
     if (!isCurrentSearch(epoch)) return;
 
     el.recommendation.innerHTML =
-      `<div class="who">Judged by ${escapeHtml(judged.modelId)}${judged.attempts.length > 1 ? ` (after ${judged.attempts.length - 1} unavailable free model${judged.attempts.length > 2 ? "s" : ""})` : ""}. This call was free.</div>` +
+      `<div class="who">Judged by ${escapeHtml(judged.modelId)}${judged.attempts.length > 1 ? ` (after ${judged.attempts.length - 1} unavailable free model${judged.attempts.length > 2 ? "s" : ""})` : ""}. This judging call cost $0.</div>` +
       renderMarkdownLite(judged.text);
     el.recPanel.hidden = false;
     el.queryStatus.textContent = `Found ${candidates.length} matching models.`;

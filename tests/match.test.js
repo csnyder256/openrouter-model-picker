@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TASK_PRESETS, beginSearch, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, invalidateSearch, isCurrentSearch, isRetryableJudgeStatus, isTaskCompatible, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
+import { TASK_PRESETS, beginSearch, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, hasOutOfBandPricing, invalidateSearch, isCurrentSearch, isRetryableJudgeStatus, isTaskCompatible, isTrulyFree, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
 
 test("perMillion converts per-token USD strings to per-million USD", () => {
   assert.equal(perMillion("0.0000025"), 2.5);
@@ -281,16 +281,11 @@ test("buildJudgeMessages never describes a model with an unknown price as $0.00"
   assert.match(msgs[1].content, /unknown/);
 });
 
-// --- Search epochs -------------------------------------------------------
-// The app allows only one search in flight: a new run claims a new epoch and
-// every DOM write is gated on `isCurrentSearch(epoch)`. Two distinct bugs
-// motivated this, both reproduced against the real app.js in a headless DOM
-// before the fix:
-//   1. a stale judge answer rendered under a newer search's table
-//   2. a superseded run's failure overwrote the live run's finished status
-//   3. an older run's `finally` re-enabled "Find models" while the newer one
-//      was still working
-// The epoch arithmetic is the pure, testable part of that guard.
+// ---------------------------------------------------------------------------
+// "Free" must mean one thing. Live evidence (2026-09-28, 458 models): the
+// `:free` suffix and a $0/$0 token price disagree in both directions, and a
+// per-artifact-billed model reports $0/$0 while charging per use.
+// ---------------------------------------------------------------------------
 
 
 test("buildJudgeMessages keeps one candidate per line when a model name carries a newline", () => {
@@ -880,4 +875,85 @@ test("a run started after a stop is the current run", () => {
   const fresh = beginSearch();
   assert.equal(isCurrentSearch(fresh), true);
   assert.equal(isCurrentSearch(stopped), false);
+});
+
+test("isTrulyFree reads the price, not the :free suffix", () => {
+  // Priced $0/$0 with no suffix: stealth/space-bunny-alpha, openrouter/free.
+  assert.equal(isTrulyFree({ id: "stealth/space-bunny-alpha", pricing: { prompt: "0", completion: "0" } }), true);
+  // A :free id whose price is not zero would not be free, whatever it claims.
+  assert.equal(isTrulyFree({ id: "acme/x:free", pricing: { prompt: "0.000001", completion: "0" } }), false);
+  // Unknown price is not free: "unmeasured is not zero".
+  assert.equal(isTrulyFree({ id: "openrouter/auto", pricing: { prompt: "-1", completion: "-1" } }), false);
+  assert.equal(isTrulyFree({ id: "acme/y", pricing: {} }), false);
+  assert.equal(isTrulyFree({ id: "acme/z" }), false);
+});
+
+
+test("hasOutOfBandPricing catches a $0-per-token model billed per artifact", () => {
+  // google/lyria-3-pro-preview and lyria-3-clip-preview, verbatim shape.
+  const lyriaPro = {
+    id: "google/lyria-3-pro-preview",
+    pricing: { prompt: "0", completion: "0" },
+    description: "Full-length songs are priced at $0.08 per song. Lyria 3 is Google's family of music generation models.",
+  };
+  const lyriaClip = {
+    id: "google/lyria-3-clip-preview",
+    pricing: { prompt: "0", completion: "0" },
+    description: "30 second duration clips are priced at $0.04 per clip.",
+  };
+  assert.equal(hasOutOfBandPricing(lyriaPro), true);
+  assert.equal(hasOutOfBandPricing(lyriaClip), true);
+  // $0/$0 with no per-use price in the description is genuinely free.
+  assert.equal(
+    hasOutOfBandPricing({ id: "openrouter/free", pricing: { prompt: "0", completion: "0" }, description: "The simplest way to get free inference." }),
+    false
+  );
+  // A model that is not free at all is never "metered-free".
+  assert.equal(
+    hasOutOfBandPricing({ id: "acme/paid", pricing: { prompt: "0.000002", completion: "0.000002" }, description: "$5 per image." }),
+    false
+  );
+});
+
+
+test("mergeModelsWithBenchmarks badges a $0/$0 router with no :free suffix as free", () => {
+  const models = [
+    { id: "openrouter/free", canonical_slug: "openrouter/free", name: "Free Models Router", description: "Free inference.", context_length: 200000,
+      architecture: { input_modalities: ["text"], output_modalities: ["text"] }, pricing: { prompt: "0", completion: "0" }, supported_parameters: [] },
+  ];
+  const merged = mergeModelsWithBenchmarks(models, [], []);
+  assert.equal(merged[0].isFree, true);
+  assert.equal(merged[0].outOfBandPricing, false);
+});
+
+
+test("mergeModelsWithBenchmarks marks a per-artifact-billed $0/$0 model as metered, not free", () => {
+  const models = [
+    { id: "google/lyria-3-clip-preview", canonical_slug: "google/lyria-3-clip-preview", name: "Lyria 3 Clip",
+      description: "30 second duration clips are priced at $0.04 per clip.", context_length: 1048576,
+      architecture: { input_modalities: ["text", "image"], output_modalities: ["text", "audio"] },
+      pricing: { prompt: "0", completion: "0" }, supported_parameters: [] },
+  ];
+  const merged = mergeModelsWithBenchmarks(models, [], []);
+  assert.equal(merged[0].outOfBandPricing, true);
+  // The badge must never say free on a model that bills per clip: isFree is
+  // the app's whole claim about cost, so it absorbs the metered case.
+  assert.equal(merged[0].isFree, false);
+});
+
+
+test("a free-only search excludes a metered $0/$0 model, but a positive ceiling still admits it", () => {
+  const candidates = [
+    { id: "openrouter/free", pricing: { promptPerM: 0, completionPerM: 0 }, outOfBandPricing: false },
+    { id: "google/lyria-3-clip-preview", pricing: { promptPerM: 0, completionPerM: 0 }, outOfBandPricing: true },
+    { id: "acme/cheap", pricing: { promptPerM: 1, completionPerM: 1 }, outOfBandPricing: false },
+  ];
+  // ceiling 0,0 is the app's "free models only" default: the $0.00 row that is
+  // billed per clip must not be presented as free.
+  assert.deepEqual(filterByPriceCeiling(candidates, 0, 0).map((c) => c.id), ["openrouter/free"]);
+  // a $5 ceiling claims nothing about free, so the metered model is allowed
+  // alongside the two $0 models and the $1 model.
+  assert.deepEqual(filterByPriceCeiling(candidates, 5, 5).map((c) => c.id), ["openrouter/free", "google/lyria-3-clip-preview", "acme/cheap"]);
+  // one-sided zero ceilings are not the free-only claim, so no metered filter.
+  assert.equal(filterByPriceCeiling(candidates, 0, 5).length, 2);
 });
