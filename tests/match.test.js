@@ -175,12 +175,12 @@ test("sortCandidates: balanced breaks ties between multiple free candidates by r
 });
 
 
-test("rankFreeModels only returns :free models, reasoning-capable ones first", () => {
+test("rankFreeModels returns declared free models, reasoning-capable ones first", () => {
   const models = [
     { id: "a/no-free", context_length: 999999, supported_parameters: ["reasoning"] },
-    { id: "a/plain:free", context_length: 8000, supported_parameters: [] },
-    { id: "a/reasoner:free", context_length: 4000, supported_parameters: ["reasoning"] },
-    { id: "a/bigger-plain:free", context_length: 16000, supported_parameters: [] },
+    { id: "a/plain:free", pricing: { prompt: "0", completion: "0" }, context_length: 8000, supported_parameters: [] },
+    { id: "a/reasoner:free", pricing: { prompt: "0", completion: "0" }, context_length: 4000, supported_parameters: ["reasoning"] },
+    { id: "a/bigger-plain:free", pricing: { prompt: "0", completion: "0" }, context_length: 16000, supported_parameters: [] },
   ];
   const ranked = rankFreeModels(models);
   assert.deepEqual(
@@ -195,9 +195,9 @@ test("rankFreeModels skips a free model that cannot output text at all", () => {
   // structurally impossible for that model (free image / audio / embedding
   // specialists are on this roster live), so it must not occupy a ladder rung.
   const models = [
-    { id: "a/text:free", context_length: 1000, supported_parameters: [], architecture: { output_modalities: ["text"] } },
-    { id: "a/audio-only:free", context_length: 9000, supported_parameters: ["reasoning"], architecture: { output_modalities: ["audio"] } },
-    { id: "a/image:free", context_length: 9000, supported_parameters: [], architecture: { output_modalities: ["image"] } },
+    { id: "a/text:free", pricing: { prompt: "0", completion: "0" }, context_length: 1000, supported_parameters: [], architecture: { output_modalities: ["text"] } },
+    { id: "a/audio-only:free", pricing: { prompt: "0", completion: "0" }, context_length: 9000, supported_parameters: ["reasoning"], architecture: { output_modalities: ["audio"] } },
+    { id: "a/image:free", pricing: { prompt: "0", completion: "0" }, context_length: 9000, supported_parameters: [], architecture: { output_modalities: ["image"] } },
   ];
   assert.deepEqual(rankFreeModels(models).map((m) => m.id), ["a/text:free"]);
 });
@@ -207,9 +207,9 @@ test("rankFreeModels keeps a free model whose output modalities are simply absen
   // Absent is missing data, not evidence of a non-text model, and this app
   // never converts missing data into an exclusion it did not observe.
   const models = [
-    { id: "a/no-architecture:free", context_length: 1000, supported_parameters: [] },
-    { id: "a/no-output-list:free", context_length: 2000, supported_parameters: [], architecture: { input_modalities: ["text"] } },
-    { id: "a/null-output-list:free", context_length: 3000, supported_parameters: [], architecture: { output_modalities: null } },
+    { id: "a/no-architecture:free", pricing: { prompt: "0", completion: "0" }, context_length: 1000, supported_parameters: [] },
+    { id: "a/no-output-list:free", pricing: { prompt: "0", completion: "0" }, context_length: 2000, supported_parameters: [], architecture: { input_modalities: ["text"] } },
+    { id: "a/null-output-list:free", pricing: { prompt: "0", completion: "0" }, context_length: 3000, supported_parameters: [], architecture: { output_modalities: null } },
   ];
   assert.deepEqual(
     rankFreeModels(models).map((m) => m.id),
@@ -956,4 +956,29 @@ test("a free-only search excludes a metered $0/$0 model, but a positive ceiling 
   assert.deepEqual(filterByPriceCeiling(candidates, 5, 5).map((c) => c.id), ["openrouter/free", "google/lyria-3-clip-preview", "acme/cheap"]);
   // one-sided zero ceilings are not the free-only claim, so no metered filter.
   assert.equal(filterByPriceCeiling(candidates, 0, 5).length, 2);
+});
+
+
+test("free badges, filters, and judges reject additional catalog charges", () => {
+  const models = [
+    { id: "plain-free", pricing: { prompt: "0", completion: "0" } },
+    { id: "request-charge:free", pricing: { prompt: "0", completion: "0", request: "0.01" } },
+    { id: "reasoning-charge:free", pricing: { prompt: "0", completion: "0", internal_reasoning: "0.00001" } },
+    { id: "artifact:free", description: "$0.08 per song", pricing: { prompt: "0", completion: "0" } },
+  ];
+  assert.deepEqual(rankFreeModels(models).map((m) => m.id), ["plain-free"]);
+  const candidates = mergeModelsWithBenchmarks(models, [], []);
+  assert.deepEqual(candidates.filter((c) => c.isFree).map((c) => c.id), ["plain-free"]);
+  assert.deepEqual(filterByPriceCeiling(candidates, 0, 0).map((c) => c.id), ["plain-free"]);
+});
+
+
+test("conditional prices and malformed zero declarations cannot claim free", () => {
+  const model = (pricing) => ({ id: "catalog/free", pricing: { prompt: "0", completion: "0", ...pricing } });
+  for (const pricing of [
+    { overrides: [{ min_prompt_tokens: 1000, prompt: "0.0001" }] },
+    { overrides: { prompt: "0.0001" } },
+    { prompt: " " }, { prompt: false },
+  ]) assert.equal(isTrulyFree(model(pricing)), false);
+  assert.equal(isTrulyFree(model({ overrides: [{ min_prompt_tokens: 1000, utc_start: 100, prompt: "0" }] })), true);
 });

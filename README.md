@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Tell it a task, a price ceiling, and a quality bar. It pulls live OpenRouter pricing and benchmark data, then asks a free model to recommend one and explain why.</strong><br>
-  No backend. No dependencies. The recommendation call is always billed at $0.
+  No backend. No dependencies. The recommendation call targets models declared free in the live catalog.
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@ OpenRouter's own `/models` endpoint gives you live pricing for around 400 models
 
 This tool asks you three things: what the task is, what you're willing to pay, and whether you're optimizing for quality, price, or the balance of the two. It pulls both endpoints, joins them, and shows you a sortable, filterable table. Then it hands the filtered shortlist to a free OpenRouter model and asks it to write up a real recommendation in plain language: which model, why it beats the runner-up for *this* task, and what you'd be trading away.
 
-Because the judge call only targets a model whose token price is a measured $0, getting that recommendation costs nothing, no matter what you end up picking for the actual job. A `:free` suffix is not the test: OpenRouter's catalog contains $0/$0 models with no such suffix (`openrouter/free`, `stealth/space-bunny-alpha`) and, in the other direction, models that report $0 per token while billing per song or clip (`google/lyria-3-pro-preview`). The app decides "free" from the price, badges the per-use ones `metered`, and keeps them out of a free-only search rather than implying a $0.00 row is free.
+The judge roster requires declared zero prompt and completion prices and rejects auxiliary or conditional charges, including per-use billing. A `:free` suffix alone is insufficient. Models with missing or invalid pricing are excluded, and metered models stay out of a free-only search. These checks use the catalog fetched for the search; they are evidence of advertised pricing at that time, not a guarantee against later provider changes.
 
 ## How it works
 
@@ -52,7 +52,7 @@ Coding, Code Review, General Chat / Assistant, Reasoning / Math, Agentic / Tool 
 
 **Why do a few models show a price of "?"** OpenRouter's own meta-routers (`openrouter/auto`, `openrouter/fusion`, and similar) report a price of `"-1"`, meaning "depends on whichever model actually gets picked." This app treats a negative price as unknown, not as a real (and nonsensical) negative dollar figure, and unknown prices are excluded from any price-ceiling search the same way a missing price would be.
 
-**Why doesn't the fallback ladder trust the `:free` suffix?** Because a suffix is a name, not a price. The ladder's promise is that getting the recommendation costs nothing, so a model earns a rung only when its own pricing fields say both directions are `0`. A `:free`-suffixed entry whose pricing says otherwise, or whose pricing is missing or unparseable, is left out — a missing price is not evidence of a free one, which is the same rule the `"-1"` sentinel above follows. Verified against the live catalog: all 17 `:free` models declare `0` in both directions, so this excludes nothing today and stops a reprice from silently billing you.
+**Why doesn't the fallback ladder trust the `:free` suffix?** Because a suffix is a name, not a price. A model earns a rung only when its catalog pricing declares both token directions as `0` and no auxiliary or conditional charge. A `:free`-suffixed entry whose pricing says otherwise, or whose pricing is missing or unparseable, is left out — a missing price is not evidence of a free one, which is the same rule the `"-1"` sentinel above follows. Verified against the live catalog: all 17 `:free` models declare `0` in both directions, so this excludes nothing today and stops a reprice from silently billing you.
 
 ## Contributing, security
 
