@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  TASK_PRESETS,
   perMillion,
   mergeModelsWithBenchmarks,
   filterByTask,
@@ -248,4 +249,77 @@ test("buildJudgeMessages never describes a model with an unknown price as $0.00"
   const msgs = buildJudgeMessages("write code", { qualityPreference: "quality" }, shortlist);
   assert.doesNotMatch(msgs[1].content, /\$0\.00/);
   assert.match(msgs[1].content, /unknown/);
+});
+
+test("sortCandidates: a preset whose metric is null still ranks, it does not return arrival order", () => {
+  // Image Generation / Text-to-Speech used to declare primaryMetric: null,
+  // which made every "Optimize for" mode return the /models arrival order
+  // unchanged. The UI offers three modes for those presets, so the order is
+  // now driven by the same intelligence index their real (multimodal) models
+  // report. This test also covers the general null-metric path directly, so a
+  // future preset that legitimately has no metric cannot silently regress to
+  // unsorted output.
+  const noMetricPreset = { id: "synthetic", primaryMetric: null };
+  const candidates = [
+    { id: "z/weak", benchmarks: { intelligenceIndex: 20, codingIndex: null }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "a/strong", benchmarks: { intelligenceIndex: 88, codingIndex: null }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "m/mid", benchmarks: { intelligenceIndex: 55, codingIndex: null }, pricing: { promptPerM: 0, completionPerM: 0 } },
+  ];
+  for (const pref of ["quality", "balanced", "cheapest"]) {
+    assert.deepEqual(
+      sortCandidates(candidates, noMetricPreset, pref).map((c) => c.id),
+      ["a/strong", "m/mid", "z/weak"],
+      `"${pref}" must rank a null-metric preset by quality, not arrival order`
+    );
+  }
+});
+
+test("sortCandidates: cheapest breaks a price tie by quality, never leaving equal-price models unordered", () => {
+  // Free-only is the app's default, so every candidate ties at $0/M. Before
+  // this, "Cheapest" fell back to the order /models happened to arrive in,
+  // which for a free-only search is the whole result set.
+  const preset = findPreset("coding");
+  const candidates = [
+    { id: "z/weak", benchmarks: { codingIndex: 20 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "a/strong", benchmarks: { codingIndex: 90 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "m/mid", benchmarks: { codingIndex: 50 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+  ];
+  assert.deepEqual(
+    sortCandidates(candidates, preset, "cheapest").map((c) => c.id),
+    ["a/strong", "m/mid", "z/weak"]
+  );
+});
+
+test("sortCandidates: fully tied candidates resolve deterministically, independent of arrival order", () => {
+  // Same metric, same price, different context: the tie must resolve the same
+  // way no matter what order the API returned the models in.
+  const preset = findPreset("general-chat");
+  const tied = [
+    { id: "b/short", contextLength: 100, benchmarks: { intelligenceIndex: 50 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "a/long", contextLength: 900, benchmarks: { intelligenceIndex: 50 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+  ];
+  const forward = sortCandidates(tied, preset, "quality").map((c) => c.id);
+  const reversed = sortCandidates(tied.slice().reverse(), preset, "quality").map((c) => c.id);
+  assert.deepEqual(forward, reversed);
+  assert.equal(forward[0], "a/long"); // larger context wins the tie
+});
+
+test("TASK_PRESETS: every preset names a real benchmark metric", () => {
+  // A null primaryMetric is a silent trap: the sort modes all no-op and the
+  // judge shortlist is sliced from arbitrary order. Every shipped preset must
+  // name a metric that mergeModelsWithBenchmarks actually populates.
+  const knownMetrics = new Set([
+    "intelligenceIndex",
+    "codingIndex",
+    "agenticIndex",
+    "gpqaAccuracy",
+    "tauBenchAccuracy",
+    "searchAvg",
+  ]);
+  for (const preset of TASK_PRESETS) {
+    assert.ok(
+      knownMetrics.has(preset.primaryMetric),
+      `preset "${preset.id}" declares primaryMetric "${preset.primaryMetric}", which is not a populated benchmark field`
+    );
+  }
 });

@@ -22,7 +22,9 @@ node --test
 
 ## Adding a task preset
 
-Add an entry to `TASK_PRESETS` in `lib/match.js`: an `id`, a `label`, a `hint` (the default task description text), a `primaryMetric` (which benchmark field drives "Best quality" sorting and the judge's framing; `null` if the task has none, like image generation), and `requireInput` / `requireOutput` modality arrays if the task needs a specific modality (e.g. `requireOutput: ["audio"]` for text-to-speech). Add a test in `tests/match.test.js` asserting the modality filter actually narrows the field the way you expect: a preset with the wrong modality array silently returns nothing, which is easy to miss without a test.
+Add an entry to `TASK_PRESETS` in `lib/match.js`: an `id`, a `label`, a `hint` (the default task description text), a `primaryMetric` (which benchmark field drives "Best quality" sorting and the judge's framing), and `requireInput` / `requireOutput` modality arrays if the task needs a specific modality (e.g. `requireOutput: ["audio"]` for text-to-speech). Add a test in `tests/match.test.js` asserting the modality filter actually narrows the field the way you expect: a preset with the wrong modality array silently returns nothing, which is easy to miss without a test.
+
+`primaryMetric` must name one of the fields `mergeModelsWithBenchmarks` actually populates (`intelligenceIndex`, `codingIndex`, `agenticIndex`, `gpqaAccuracy`, `tauBenchAccuracy`, `searchAvg`); a test asserts this for every shipped preset. Even a preset whose *output* is image or audio should still name a metric — the models that serve those presets are general multimodal models that carry an intelligence index. A `null` metric is a silent trap: every "Optimize for" mode returns the `/models` arrival order unchanged, so the table shows one arbitrary order regardless of the setting and the judge's shortlist is sliced from it.
 
 ## Reporting a wrong recommendation
 
