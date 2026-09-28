@@ -12,6 +12,8 @@ import {
   buildJudgeMessages,
   isRetryableJudgeStatus,
   resolveTaskDescription,
+  beginSearch,
+  isCurrentSearch,
 } from "../lib/match.js";
 
 test("perMillion converts per-token USD strings to per-million USD", () => {
@@ -248,4 +250,45 @@ test("buildJudgeMessages never describes a model with an unknown price as $0.00"
   const msgs = buildJudgeMessages("write code", { qualityPreference: "quality" }, shortlist);
   assert.doesNotMatch(msgs[1].content, /\$0\.00/);
   assert.match(msgs[1].content, /unknown/);
+});
+
+// --- Search epochs -------------------------------------------------------
+// The app allows only one search in flight: a new run claims a new epoch and
+// every DOM write is gated on `isCurrentSearch(epoch)`. Two distinct bugs
+// motivated this, both reproduced against the real app.js in a headless DOM
+// before the fix:
+//   1. a stale judge answer rendered under a newer search's table
+//   2. a superseded run's failure overwrote the live run's finished status
+//   3. an older run's `finally` re-enabled "Find models" while the newer one
+//      was still working
+// The epoch arithmetic is the pure, testable part of that guard.
+
+test("beginSearch hands out a new epoch each call, and the newest one is the current one", () => {
+  const first = beginSearch();
+  assert.equal(isCurrentSearch(first), true);
+  const second = beginSearch();
+  assert.equal(isCurrentSearch(second), true);
+  assert.equal(isCurrentSearch(first), false, "a superseded search is no longer current");
+  const third = beginSearch();
+  assert.equal(isCurrentSearch(third), true);
+  assert.equal(isCurrentSearch(second), false);
+  assert.equal(isCurrentSearch(first), false);
+});
+
+test("isCurrentSearch is false for epochs that were never handed out", () => {
+  const live = beginSearch();
+  assert.equal(isCurrentSearch(live), true);
+  assert.equal(isCurrentSearch(live + 1), false, "a future epoch belongs to no run yet");
+  assert.equal(isCurrentSearch(live - 1), false);
+  assert.equal(isCurrentSearch(null), false);
+  assert.equal(isCurrentSearch(undefined), false);
+});
+
+test("a superseded search stays superseded no matter how many runs start later", () => {
+  const stale = beginSearch();
+  const live = beginSearch();
+  beginSearch();
+  beginSearch();
+  assert.equal(isCurrentSearch(stale), false);
+  assert.equal(isCurrentSearch(live), false);
 });

@@ -48,6 +48,8 @@ Coding, Code Review, General Chat / Assistant, Reasoning / Math, Agentic / Tool 
 
 **Why does the fallback ladder retry on a 403?** A free model can reject a request with 403 because that specific model restricts itself to "agentic harness" callers (observed live from `thinkingmachines/inkling-small:free`), which is a per-model policy, not a broken key. Only a 401 (an actually bad key) stops the ladder; everything else advances to the next free model. See `isRetryableJudgeStatus` in `lib/match.js`.
 
+**What happens if I click Find models twice, or hit Stop?** Only one search runs at a time. Each run claims an epoch (`beginSearch` / `isCurrentSearch` in `lib/match.js`) and every write to the page is gated on still owning it, so a run that has been superseded cannot render its table or verdict over a newer one, and cannot report its own cancel as an error under a run that succeeded. Starting a new search also aborts the previous run's in-flight requests (`AbortController`, threaded through `lib/or-client.js`), and the **Stop** button does the same deliberately mid-flight. Both are real UI states, not just bandwidth hygiene: without the epoch guard a slower first search's judge answer lands under a faster second search's table.
+
 **Why do a few models show a price of "?"** OpenRouter's own meta-routers (`openrouter/auto`, `openrouter/fusion`, and similar) report a price of `"-1"`, meaning "depends on whichever model actually gets picked." This app treats a negative price as unknown, not as a real (and nonsensical) negative dollar figure, and unknown prices are excluded from any price-ceiling search the same way a missing price would be.
 
 ## Contributing, security
