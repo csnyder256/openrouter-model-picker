@@ -55,10 +55,6 @@ let lastSortDir = 1;
 // Browser-only state, so it lives here rather than in lib/match.js: the epoch
 // arithmetic it depends on is the pure, tested part.
 let searchController = null;
-// Milliseconds a finished-but-unclaimed run waited before its state was
-// dropped; kept so Stop can tell "cancelled a live run" from "clicked after
-// the run had already finished".
-let finishedAt = null;
 
 function initApiKey() {
   const saved = localStorage.getItem(KEY_STORAGE);
@@ -306,39 +302,26 @@ async function onFindModels() {
     if (isCurrentSearch(epoch)) {
       setSearchButtons(false);
       if (searchController === controller) searchController = null;
-      // Nothing owns the buttons at the end of a finished run. That is what
-      // lets Stop tell "cancelled a live search" from "clicked just after it
-      // finished", and say so instead of claiming a cancellation that never
-      // happened.
-      finishedAt = Date.now();
     }
   }
 }
 
 function onStopSearch() {
   // Revoke the running search's ownership FIRST, while it is still the current
-  // epoch, then abort its transport. Both are needed and neither is sufficient:
-  // the abort stops requests that can still be stopped, and the revocation is
-  // what actually guarantees no later DOM write -- because `Signal.abort()`
-  // settles a fetch that had already completed, a body already being read, or a
-  // promise the browser resolved before it observed the abort. After this the
-  // stopped run fails every `isCurrentSearch` gate and every `isAbortError`
-  // check in its own catch/finally, so it reports nothing and leaves the
-  // buttons to this handler.
+  // epoch, then abort its transport. The abort is what actually stops the
+  // requests that are still in flight; the revocation is what keeps a response
+  // that arrived anyway -- one the browser had already resolved before it
+  // observed the abort, or a judge call answered mid-flight -- from writing,
+  // because an abort does not un-resolve a completed response. After this the
+  // stopped run fails every `isCurrentSearch` gate in its own catch/finally, so
+  // it reports nothing and leaves the buttons to this handler.
   const stopped = searchController;
-  const revoked = stopped ? invalidateSearch(stopped.epoch) : false;
+  if (stopped) invalidateSearch(stopped.epoch);
   if (stopped) stopped.abort();
   searchController = null;
-  // A run that finished microseconds before the click is not a cancellation.
-  // `finishedAt` is wall-clock and only ever compared against itself, so a
-  // clock that does not advance cannot make this read either way.
-  const justFinished = typeof finishedAt === "number" && Date.now() === finishedAt;
-  finishedAt = null;
   setSearchButtons(false);
   el.queryStatus.classList.remove("err");
-  el.queryStatus.textContent = revoked || !justFinished
-    ? "Search stopped."
-    : "Search stopped. (It had already finished; nothing was cancelled.)";
+  el.queryStatus.textContent = "Search stopped.";
 }
 
 initApiKey();

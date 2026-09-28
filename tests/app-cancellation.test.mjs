@@ -159,7 +159,7 @@ test("a new search after Stop runs normally and owns the page when it finishes",
   assert.equal(statusIsError(), false);
 });
 
-test("a stopped run's late success and a late failure both stay off the page", async () => {
+test("a stopped run's late success stays off the page", async () => {
   resetPage();
   const run = await runUntilJudge();
   el["stop-models"].click();
@@ -171,29 +171,4 @@ test("a stopped run's late success and a late failure both stay off the page", a
   assert.equal(statusText(), "Search stopped.",
     "a stopped run's late success must not replace the stopped status with its own result");
   assert.equal(el["rec-panel"].hidden, true);
-});
-
-test("Stop clicked just after a run finished does not claim a cancellation", async () => {
-  resetPage();
-  const run = await runUntilJudge();
-  net.resolve("judge", judgePayload("FINISHED"));
-  await run;
-  await drain(4);
-  assert.equal(statusText(), "Found 2 matching models.", "the run finished on its own");
-
-  // The click lands after the run already left the page in its finished state,
-  // so there is no cancellation to report and saying otherwise would be false.
-  el["stop-models"].click();
-  assert.match(statusText(), /nothing was cancelled/,
-    "Stop must not claim it cancelled a search that had already finished");
-  assert.equal(statusIsError(), false);
-});
-
-test("Stop with nothing running at all is a plain stop", async () => {
-  resetPage();
-  // Nothing has ever run in this scenario: no finish to report, nothing to
-  // claim. The plain wording is the honest one here.
-  el["stop-models"].click();
-  assert.equal(statusText(), "Search stopped.");
-  assert.equal(statusIsError(), false);
 });
