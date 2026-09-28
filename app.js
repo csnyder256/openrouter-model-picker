@@ -14,6 +14,7 @@ import {
   resolveTaskDescription,
   beginSearch,
   isCurrentSearch,
+  invalidateSearch,
 } from "./lib/match.js";
 
 const KEY_STORAGE = "orpicker.apiKey";
@@ -44,13 +45,20 @@ let lastSortKey = null;
 let lastSortDir = 1;
 
 // One in-flight search at a time. Starting a new search claims a new epoch and
-// aborts the previous run's network calls; the previous run's `.then`/`catch`
-// still fire (an aborted fetch rejects), and each one checks its own epoch
-// before touching the DOM, so a superseded run can neither render a stale
-// table/verdict nor overwrite the live run's status with its own error.
+// aborts the previous run's network calls; the previous run's `.then`/`.catch`
+// still fire -- sometimes as an abort, sometimes as the result it was already
+// carrying -- and each one checks its own epoch before touching the DOM, so a
+// superseded run can neither render a stale table/verdict nor overwrite the
+// live run's status with its own error. Ownership is what does the work here;
+// the abort is an optimization on top of it, because aborting a signal does not
+// reliably settle a request that had already completed.
 // Browser-only state, so it lives here rather than in lib/match.js: the epoch
 // arithmetic it depends on is the pure, tested part.
 let searchController = null;
+// Milliseconds a finished-but-unclaimed run waited before its state was
+// dropped; kept so Stop can tell "cancelled a live run" from "clicked after
+// the run had already finished".
+let finishedAt = null;
 
 function initApiKey() {
   const saved = localStorage.getItem(KEY_STORAGE);
@@ -230,6 +238,9 @@ async function onFindModels() {
   const epoch = beginSearch();
   if (searchController) searchController.abort();
   const controller = new AbortController();
+  // The controller carries the epoch it owns, so Stop can revoke exactly the
+  // run it is stopping without guessing which epoch is current.
+  controller.epoch = epoch;
   searchController = controller;
   const signal = controller.signal;
 
@@ -295,19 +306,39 @@ async function onFindModels() {
     if (isCurrentSearch(epoch)) {
       setSearchButtons(false);
       if (searchController === controller) searchController = null;
+      // Nothing owns the buttons at the end of a finished run. That is what
+      // lets Stop tell "cancelled a live search" from "clicked just after it
+      // finished", and say so instead of claiming a cancellation that never
+      // happened.
+      finishedAt = Date.now();
     }
   }
 }
 
 function onStopSearch() {
-  if (searchController) searchController.abort();
+  // Revoke the running search's ownership FIRST, while it is still the current
+  // epoch, then abort its transport. Both are needed and neither is sufficient:
+  // the abort stops requests that can still be stopped, and the revocation is
+  // what actually guarantees no later DOM write -- because `Signal.abort()`
+  // settles a fetch that had already completed, a body already being read, or a
+  // promise the browser resolved before it observed the abort. After this the
+  // stopped run fails every `isCurrentSearch` gate and every `isAbortError`
+  // check in its own catch/finally, so it reports nothing and leaves the
+  // buttons to this handler.
+  const stopped = searchController;
+  const revoked = stopped ? invalidateSearch(stopped.epoch) : false;
+  if (stopped) stopped.abort();
   searchController = null;
-  // Keep the epoch current so the stopped run's own catch/finally see
-  // themselves as still-current, report nothing, and leave the buttons alone;
-  // this handler does the reset instead.
+  // A run that finished microseconds before the click is not a cancellation.
+  // `finishedAt` is wall-clock and only ever compared against itself, so a
+  // clock that does not advance cannot make this read either way.
+  const justFinished = typeof finishedAt === "number" && Date.now() === finishedAt;
+  finishedAt = null;
   setSearchButtons(false);
   el.queryStatus.classList.remove("err");
-  el.queryStatus.textContent = "Search stopped.";
+  el.queryStatus.textContent = revoked || !justFinished
+    ? "Search stopped."
+    : "Search stopped. (It had already finished; nothing was cancelled.)";
 }
 
 initApiKey();

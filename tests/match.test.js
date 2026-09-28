@@ -13,6 +13,7 @@ import {
   isRetryableJudgeStatus,
   resolveTaskDescription,
   beginSearch,
+  invalidateSearch,
   isCurrentSearch,
 } from "../lib/match.js";
 
@@ -291,4 +292,38 @@ test("a superseded search stays superseded no matter how many runs start later",
   beginSearch();
   assert.equal(isCurrentSearch(stale), false);
   assert.equal(isCurrentSearch(live), false);
+});
+
+// --- Stopping a search -----------------------------------------------------
+// Stop is the case `beginSearch` cannot express: it ends the run the user is
+// waiting for and starts nothing. Aborting the transport is not enough on its
+// own, because an abort cannot un-resolve a response that already arrived --
+// so the run's ownership is revoked, and every later DOM write fails the same
+// `isCurrentSearch` gate a superseded run fails.
+
+test("invalidateSearch revokes the current epoch without handing out a new one", () => {
+  const epoch = beginSearch();
+  assert.equal(invalidateSearch(epoch), true);
+  assert.equal(isCurrentSearch(epoch), false, "the stopped run no longer owns the page");
+  // Revoking burns the epoch: the next run takes a fresh one, so a stopped run
+  // cannot become current again by arithmetic.
+  const next = beginSearch();
+  assert.notEqual(next, epoch, "the stopped epoch is retired, not handed out again");
+  assert.equal(isCurrentSearch(next), true);
+  assert.equal(isCurrentSearch(epoch), false);
+});
+
+test("invalidateSearch on an already-stale epoch is a no-op, not a second revoke", () => {
+  const stale = beginSearch();
+  const live = beginSearch();
+  assert.equal(invalidateSearch(stale), false, "a superseded run is already revoked");
+  assert.equal(isCurrentSearch(live), true, "revoking someone else's epoch must not disturb the live run");
+});
+
+test("a run started after a stop is the current run", () => {
+  const stopped = beginSearch();
+  invalidateSearch(stopped);
+  const fresh = beginSearch();
+  assert.equal(isCurrentSearch(fresh), true);
+  assert.equal(isCurrentSearch(stopped), false);
 });
