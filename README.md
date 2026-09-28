@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Tell it a task, a price ceiling, and a quality bar. It pulls live OpenRouter pricing and benchmark data, then asks a free model to recommend one and explain why.</strong><br>
-  No backend. No dependencies. The recommendation call is always free.
+  No backend. No dependencies. The recommendation call is always billed at $0.
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@ OpenRouter's own `/models` endpoint gives you live pricing for around 400 models
 
 This tool asks you three things: what the task is, what you're willing to pay, and whether you're optimizing for quality, price, or the balance of the two. It pulls both endpoints, joins them, and shows you a sortable, filterable table. Then it hands the filtered shortlist to a free OpenRouter model and asks it to write up a real recommendation in plain language: which model, why it beats the runner-up for *this* task, and what you'd be trading away.
 
-Because the judge call always targets a model whose id ends in `:free`, getting that recommendation costs nothing, no matter what you end up picking for the actual job.
+Because the judge call only targets a model whose token price is a measured $0, getting that recommendation costs nothing, no matter what you end up picking for the actual job. A `:free` suffix is not the test: OpenRouter's catalog contains $0/$0 models with no such suffix (`openrouter/free`, `stealth/space-bunny-alpha`) and, in the other direction, models that report $0 per token while billing per song or clip (`google/lyria-3-pro-preview`). The app decides "free" from the price, badges the per-use ones `metered`, and keeps them out of a free-only search rather than implying a $0.00 row is free.
 
 ## How it works
 
@@ -36,7 +36,7 @@ Steps 1-3 run entirely in your browser against `openrouter.ai`. There is no serv
 
 ## Using it
 
-Open `index.html` in a browser (a static file server works fine; `python -m http.server` or the published GitHub Pages site both do), paste an [OpenRouter API key](https://openrouter.ai/settings/keys), pick a task preset (or write your own), and click **Find models**. The price ceiling defaults to $0/M in both directions (free models only), and every field is editable.
+Open `index.html` in a browser (a static file server works fine; `python -m http.server` or the published GitHub Pages site both do), paste an [OpenRouter API key](https://openrouter.ai/settings/keys), pick a task preset (or write your own), and click **Find models**. The price ceiling defaults to $0/M in both directions (free models only — models billed per song, clip, or image are excluded, since a $0 token price does not make them free), and every field is editable.
 
 ### Task presets
 
