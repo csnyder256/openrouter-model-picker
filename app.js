@@ -12,6 +12,7 @@ import {
   buildJudgeMessages,
   isRetryableJudgeStatus,
   resolveTaskDescription,
+  JUDGE_ATTEMPT_LIMIT,
 } from "./lib/match.js";
 
 const KEY_STORAGE = "orpicker.apiKey";
@@ -177,7 +178,7 @@ async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shor
   const tried = [];
   const messages = buildJudgeMessages(taskDescription, preferences, shortlist);
   let lastErr = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < JUDGE_ATTEMPT_LIMIT; attempt++) {
     const candidate = nextFallbackModel(ranked, tried);
     if (!candidate) break;
     tried.push(candidate.id);
@@ -192,7 +193,18 @@ async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shor
       }
     }
   }
-  throw lastErr || new Error("No free model was available to judge this request.");
+  // Say which part failed. A search that found models but no judge is a
+  // different outcome from a search that found nothing, and the user's next
+  // move differs: raise the quality bar versus just click again later. When
+  // the first attempt died with a real HTTP error, report that error rather
+  // than a vaguer summary of it.
+  if (!ranked.length) {
+    throw new Error("No free model was available to judge this request.");
+  }
+  throw new Error(
+    `No free model answered after ${tried.length} attempt${tried.length === 1 ? "" : "s"} (${tried.join(", ")}).` +
+      (lastErr ? ` Last error: ${lastErr.message}` : "")
+  );
 }
 
 async function onFindModels() {
@@ -245,6 +257,10 @@ async function onFindModels() {
     console.error(err);
     el.queryStatus.textContent = `Error: ${err.message}`;
     el.queryStatus.classList.add("err");
+    // The table is already on screen by the time the judge runs, so a judging
+    // failure must not leave the old recommendation (or a stale "asking a free
+    // model…" status) sitting next to a fresh, unrelated table.
+    el.recPanel.hidden = true;
   } finally {
     el.findBtn.disabled = false;
   }
