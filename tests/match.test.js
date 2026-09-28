@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TASK_PRESETS, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, isRetryableJudgeStatus, isTaskCompatible, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
+import { TASK_PRESETS, beginSearch, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, invalidateSearch, isCurrentSearch, isRetryableJudgeStatus, isTaskCompatible, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
 
 test("perMillion converts per-token USD strings to per-million USD", () => {
   assert.equal(perMillion("0.0000025"), 2.5);
@@ -280,6 +280,17 @@ test("buildJudgeMessages never describes a model with an unknown price as $0.00"
   assert.doesNotMatch(msgs[1].content, /\$0\.00/);
   assert.match(msgs[1].content, /unknown/);
 });
+
+// --- Search epochs -------------------------------------------------------
+// The app allows only one search in flight: a new run claims a new epoch and
+// every DOM write is gated on `isCurrentSearch(epoch)`. Two distinct bugs
+// motivated this, both reproduced against the real app.js in a headless DOM
+// before the fix:
+//   1. a stale judge answer rendered under a newer search's table
+//   2. a superseded run's failure overwrote the live run's finished status
+//   3. an older run's `finally` re-enabled "Find models" while the newer one
+//      was still working
+// The epoch arithmetic is the pure, testable part of that guard.
 
 
 test("buildJudgeMessages keeps one candidate per line when a model name carries a newline", () => {
@@ -800,4 +811,73 @@ test("TASK_PRESETS: every preset names a real benchmark metric", () => {
       `preset "${preset.id}" declares primaryMetric "${preset.primaryMetric}", which is not a populated benchmark field`
     );
   }
+});
+
+test("beginSearch hands out a new epoch each call, and the newest one is the current one", () => {
+  const first = beginSearch();
+  assert.equal(isCurrentSearch(first), true);
+  const second = beginSearch();
+  assert.equal(isCurrentSearch(second), true);
+  assert.equal(isCurrentSearch(first), false, "a superseded search is no longer current");
+  const third = beginSearch();
+  assert.equal(isCurrentSearch(third), true);
+  assert.equal(isCurrentSearch(second), false);
+  assert.equal(isCurrentSearch(first), false);
+});
+
+
+test("isCurrentSearch is false for epochs that were never handed out", () => {
+  const live = beginSearch();
+  assert.equal(isCurrentSearch(live), true);
+  assert.equal(isCurrentSearch(live + 1), false, "a future epoch belongs to no run yet");
+  assert.equal(isCurrentSearch(live - 1), false);
+  assert.equal(isCurrentSearch(null), false);
+  assert.equal(isCurrentSearch(undefined), false);
+});
+
+
+test("a superseded search stays superseded no matter how many runs start later", () => {
+  const stale = beginSearch();
+  const live = beginSearch();
+  beginSearch();
+  beginSearch();
+  assert.equal(isCurrentSearch(stale), false);
+  assert.equal(isCurrentSearch(live), false);
+});
+
+// --- Stopping a search -----------------------------------------------------
+// Stop is the case `beginSearch` cannot express: it ends the run the user is
+// waiting for and starts nothing. Aborting the transport is not enough on its
+// own, because an abort cannot un-resolve a response that already arrived --
+// so the run's ownership is revoked, and every later DOM write fails the same
+// `isCurrentSearch` gate a superseded run fails.
+
+
+test("invalidateSearch revokes the current epoch without handing out a new one", () => {
+  const epoch = beginSearch();
+  assert.equal(invalidateSearch(epoch), true);
+  assert.equal(isCurrentSearch(epoch), false, "the stopped run no longer owns the page");
+  // Revoking burns the epoch: the next run takes a fresh one, so a stopped run
+  // cannot become current again by arithmetic.
+  const next = beginSearch();
+  assert.notEqual(next, epoch, "the stopped epoch is retired, not handed out again");
+  assert.equal(isCurrentSearch(next), true);
+  assert.equal(isCurrentSearch(epoch), false);
+});
+
+
+test("invalidateSearch on an already-stale epoch is a no-op, not a second revoke", () => {
+  const stale = beginSearch();
+  const live = beginSearch();
+  assert.equal(invalidateSearch(stale), false, "a superseded run is already revoked");
+  assert.equal(isCurrentSearch(live), true, "revoking someone else's epoch must not disturb the live run");
+});
+
+
+test("a run started after a stop is the current run", () => {
+  const stopped = beginSearch();
+  invalidateSearch(stopped);
+  const fresh = beginSearch();
+  assert.equal(isCurrentSearch(fresh), true);
+  assert.equal(isCurrentSearch(stopped), false);
 });

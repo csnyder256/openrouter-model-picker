@@ -1,4 +1,4 @@
-import { fetchModels, fetchBenchmarks, chatCompletion, OpenRouterError } from "./lib/or-client.js";
+import { fetchModels, fetchBenchmarks, chatCompletion, OpenRouterError, isAbortError } from "./lib/or-client.js";
 import { renderMarkdownLite, escapeHtml } from "./lib/markdown-lite.js";
 import {
   TASK_PRESETS,
@@ -14,6 +14,9 @@ import {
   isRetryableJudgeStatus,
   resolveTaskDescription,
   JUDGE_ATTEMPT_LIMIT,
+  beginSearch,
+  isCurrentSearch,
+  invalidateSearch,
 } from "./lib/match.js";
 
 const KEY_STORAGE = "orpicker.apiKey";
@@ -29,6 +32,7 @@ const el = {
   maxCompletion: document.getElementById("max-completion"),
   qualityPref: document.getElementById("quality-pref"),
   findBtn: document.getElementById("find-models"),
+  stopBtn: document.getElementById("stop-models"),
   queryStatus: document.getElementById("query-status"),
   recPanel: document.getElementById("rec-panel"),
   recommendation: document.getElementById("recommendation"),
@@ -41,6 +45,18 @@ const el = {
 let lastCandidates = [];
 let lastSortKey = null;
 let lastSortDir = 1;
+
+// One in-flight search at a time. Starting a new search claims a new epoch and
+// aborts the previous run's network calls; the previous run's `.then`/`.catch`
+// still fire -- sometimes as an abort, sometimes as the result it was already
+// carrying -- and each one checks its own epoch before touching the DOM, so a
+// superseded run can neither render a stale table/verdict nor overwrite the
+// live run's status with its own error. Ownership is what does the work here;
+// the abort is an optimization on top of it, because aborting a signal does not
+// reliably settle a request that had already completed.
+// Browser-only state, so it lives here rather than in lib/match.js: the epoch
+// arithmetic it depends on is the pure, tested part.
+let searchController = null;
 
 function initApiKey() {
   const saved = localStorage.getItem(KEY_STORAGE);
@@ -164,17 +180,18 @@ function initTableSort() {
 // Three requests per search: /models once, plus one per benchmark source.
 // The raw /models rows are returned too, because the judge's fallback ladder
 // ranks free models from them; fetching the catalog a second time for that
-// would download the whole model list twice.
-async function fetchAllData(apiKey) {
+// would download the whole model list twice. `signal` cancels all three when
+// the search is superseded or stopped.
+async function fetchAllData(apiKey, signal) {
   const [models, aaRows, orRows] = await Promise.all([
-    fetchModels(apiKey),
-    fetchBenchmarks(apiKey, "artificial-analysis"),
-    fetchBenchmarks(apiKey, "openrouter"),
+    fetchModels(apiKey, signal),
+    fetchBenchmarks(apiKey, "artificial-analysis", signal),
+    fetchBenchmarks(apiKey, "openrouter", signal),
   ]);
   return { merged: mergeModelsWithBenchmarks(models, aaRows, orRows), rawModels: models };
 }
 
-async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shortlist) {
+async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shortlist, signal) {
   // The ladder is ranked from the raw /models rows, which carry each free
   // model's declared input/output modalities. Put the models that can actually
   // serve this task first: for an OCR or vision preset, a text-only free model
@@ -191,10 +208,11 @@ async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shor
     if (!candidate) break;
     tried.push(candidate.id);
     try {
-      const result = await chatCompletion(apiKey, candidate.id, messages);
+      const result = await chatCompletion(apiKey, candidate.id, messages, signal);
       const text = result.choices?.[0]?.message?.content || "(empty response)";
       return { modelId: candidate.id, text, attempts: tried };
     } catch (err) {
+      if (isAbortError(err, signal)) throw err; // cancelled: not a judge failure
       lastErr = err;
       if (err instanceof OpenRouterError && !isRetryableJudgeStatus(err.status)) {
         throw err;
@@ -215,6 +233,11 @@ async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shor
   );
 }
 
+function setSearchButtons(running) {
+  el.findBtn.disabled = running;
+  if (el.stopBtn) el.stopBtn.hidden = !running;
+}
+
 async function onFindModels() {
   const apiKey = el.apiKey.value.trim();
   if (!apiKey) {
@@ -222,8 +245,23 @@ async function onFindModels() {
     el.queryStatus.classList.add("err");
     return;
   }
+
+  // Claim this run's epoch and take over the single in-flight slot. Anything
+  // still running from a previous click is now superseded: its network calls
+  // are aborted, and its DOM writes are dropped by the `isCurrentSearch`
+  // checks below. Without this, two searches overlap and the loser's judge
+  // answer lands under the winner's table.
+  const epoch = beginSearch();
+  if (searchController) searchController.abort();
+  const controller = new AbortController();
+  // The controller carries the epoch it owns, so Stop can revoke exactly the
+  // run it is stopping without guessing which epoch is current.
+  controller.epoch = epoch;
+  searchController = controller;
+  const signal = controller.signal;
+
   el.queryStatus.classList.remove("err");
-  el.findBtn.disabled = true;
+  setSearchButtons(true);
   el.recPanel.hidden = true;
   el.resultsPanel.hidden = true;
 
@@ -232,11 +270,15 @@ async function onFindModels() {
     if (!prefs.taskDescription) {
       el.queryStatus.textContent = "Describe the task in the text box first.";
       el.queryStatus.classList.add("err");
-      el.findBtn.disabled = false;
-      return;
+      return; // finally restores the buttons for this, the current, run
     }
+    // Local, immediate feedback, then a long network wait. The status line is
+    // written before any await so a slow fetch cannot leave the button
+    // spinning with nothing to read; the later messages replace it because
+    // they are only written by a run that still owns the epoch.
     el.queryStatus.textContent = "Fetching live model list and benchmark data…";
-    const { merged, rawModels } = await fetchAllData(apiKey);
+    const { merged, rawModels } = await fetchAllData(apiKey, signal);
+    if (!isCurrentSearch(epoch)) return;
 
     let candidates = filterByTask(merged, prefs.preset);
     candidates = filterByPriceCeiling(candidates, prefs.maxPromptPerM, prefs.maxCompletionPerM);
@@ -246,6 +288,7 @@ async function onFindModels() {
     lastSortKey = null;
     renderTable(candidates);
     el.resultsPanel.hidden = false;
+    if (!isCurrentSearch(epoch)) return;
 
     if (!candidates.length) {
       el.queryStatus.textContent = "No models matched. Try raising the price ceiling or a different task.";
@@ -254,7 +297,8 @@ async function onFindModels() {
 
     el.queryStatus.textContent = `Found ${candidates.length} matching models. Asking a free model to judge the shortlist…`;
     const shortlist = candidates.slice(0, 15);
-    const judged = await runJudge(apiKey, rawModels, prefs.taskDescription, prefs, shortlist);
+    const judged = await runJudge(apiKey, rawModels, prefs.taskDescription, prefs, shortlist, signal);
+    if (!isCurrentSearch(epoch)) return;
 
     el.recommendation.innerHTML =
       `<div class="who">Judged by ${escapeHtml(judged.modelId)}${judged.attempts.length > 1 ? ` (after ${judged.attempts.length - 1} unavailable free model${judged.attempts.length > 2 ? "s" : ""})` : ""}. This call was free.</div>` +
@@ -262,6 +306,9 @@ async function onFindModels() {
     el.recPanel.hidden = false;
     el.queryStatus.textContent = `Found ${candidates.length} matching models.`;
   } catch (err) {
+    // A superseded or user-stopped run must not report anything: the abort is
+    // the intended outcome of starting a new search, not a failure to surface.
+    if (isAbortError(err, signal) || !isCurrentSearch(epoch)) return;
     console.error(err);
     el.queryStatus.textContent = `Error: ${err.message}`;
     el.queryStatus.classList.add("err");
@@ -270,11 +317,35 @@ async function onFindModels() {
     // model…" status) sitting next to a fresh, unrelated table.
     el.recPanel.hidden = true;
   } finally {
-    el.findBtn.disabled = false;
+    // Only the newest run owns the buttons. An older run reaching its finally
+    // must not re-enable "Find models" while the current one is still working.
+    if (isCurrentSearch(epoch)) {
+      setSearchButtons(false);
+      if (searchController === controller) searchController = null;
+    }
   }
+}
+
+function onStopSearch() {
+  // Revoke the running search's ownership FIRST, while it is still the current
+  // epoch, then abort its transport. The abort is what actually stops the
+  // requests that are still in flight; the revocation is what keeps a response
+  // that arrived anyway -- one the browser had already resolved before it
+  // observed the abort, or a judge call answered mid-flight -- from writing,
+  // because an abort does not un-resolve a completed response. After this the
+  // stopped run fails every `isCurrentSearch` gate in its own catch/finally, so
+  // it reports nothing and leaves the buttons to this handler.
+  const stopped = searchController;
+  if (stopped) invalidateSearch(stopped.epoch);
+  if (stopped) stopped.abort();
+  searchController = null;
+  setSearchButtons(false);
+  el.queryStatus.classList.remove("err");
+  el.queryStatus.textContent = "Search stopped.";
 }
 
 initApiKey();
 initTaskControls();
 initTableSort();
 el.findBtn.addEventListener("click", onFindModels);
+if (el.stopBtn) el.stopBtn.addEventListener("click", onStopSearch);
