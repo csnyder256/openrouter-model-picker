@@ -53,7 +53,7 @@
     <div class="field-row">
       <div class="field checkbox">
         <input type="checkbox" id="free-only" checked>
-        <label for="free-only">Free models only</label>
+        <label for="free-only">Free models only ($0 per token)</label>
       </div>
       <div class="field">
         <label for="max-prompt">Max prompt price ($ / 1M tokens)</label>
@@ -72,7 +72,10 @@
         </select>
       </div>
     </div>
-    <button type="button" id="find-models">Find models</button>
+    <div class="field-row">
+      <button type="button" id="find-models">Find models</button>
+      <button type="button" class="secondary" id="stop-models" hidden>Stop</button>
+    </div>
     <p class="status" id="query-status"></p>
   </section>
 
@@ -106,7 +109,7 @@
   </section>
 
   <footer>
-    <p>No backend. Every request goes from this page directly to openrouter.ai. Model list and pricing from <code>/api/v1/models</code>; benchmark scores (Artificial Analysis intelligence/coding/agentic indices, and OpenRouter&rsquo;s own GPQA-Diamond, tau-bench-airline, and web-search evals) from <code>/api/v1/benchmarks</code>. The judging call always targets a <code>:free</code>-suffixed model, so getting the recommendation never costs anything. MIT licensed.</p>
+    <p>No backend. Every request goes from this page directly to openrouter.ai. Model list and pricing from <code>/api/v1/models</code>; benchmark scores (Artificial Analysis intelligence/coding/agentic indices, and OpenRouter&rsquo;s own GPQA-Diamond, tau-bench-airline, and web-search evals) from <code>/api/v1/benchmarks</code>. The judging call targets a model whose token price is $0, so getting the recommendation costs nothing. Note that a $0 token price is not always a free model: one billed per song, clip, or image still reports $0 per token, so those are marked <em>metered</em> and left out of a free-only search rather than shown as free. MIT licensed.</p>
   </footer>
 </main>
 <script type="module" src="app.js"></script>

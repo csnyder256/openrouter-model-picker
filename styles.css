@@ -96,6 +96,7 @@ td.model .id { display: block; font-family: var(--mono); font-size: 0.75rem; col
 td.num { font-family: var(--mono); text-align: right; }
 td.na { color: var(--ink-2); font-style: italic; }
 .free-badge { display: inline-block; font-family: var(--mono); font-size: 0.68rem; padding: 0.05rem 0.35rem; border: 1px solid var(--ok); color: var(--ok); border-radius: 3px; margin-left: 0.4rem; }
+.metered-badge { display: inline-block; font-family: var(--mono); font-size: 0.68rem; padding: 0.05rem 0.35rem; border: 1px solid var(--warn); color: var(--warn); border-radius: 3px; margin-left: 0.4rem; cursor: help; }
 .table-wrap { overflow-x: auto; }
 
 footer { margin-top: 2rem; font-size: 0.8rem; color: var(--ink-2); }

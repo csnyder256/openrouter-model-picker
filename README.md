@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Tell it a task, a price ceiling, and a quality bar. It pulls live OpenRouter pricing and benchmark data, then asks a free model to recommend one and explain why.</strong><br>
-  No backend. No dependencies. The recommendation call is always free.
+  No backend. No dependencies. The recommendation call targets models declared free in the live catalog.
 </p>
 
 <p align="center">
@@ -22,21 +22,21 @@ OpenRouter's own `/models` endpoint gives you live pricing for around 400 models
 
 This tool asks you three things: what the task is, what you're willing to pay, and whether you're optimizing for quality, price, or the balance of the two. It pulls both endpoints, joins them, and shows you a sortable, filterable table. Then it hands the filtered shortlist to a free OpenRouter model and asks it to write up a real recommendation in plain language: which model, why it beats the runner-up for *this* task, and what you'd be trading away.
 
-Because the judge call always targets a model whose id ends in `:free`, getting that recommendation costs nothing, no matter what you end up picking for the actual job.
+The judge roster requires declared zero prompt and completion prices and rejects auxiliary or conditional charges, including per-use billing. A `:free` suffix alone is insufficient. Models with missing or invalid pricing are excluded, and metered models stay out of a free-only search. These checks use the catalog fetched for the search; they are evidence of advertised pricing at that time, not a guarantee against later provider changes.
 
 ## How it works
 
 1. **`GET /api/v1/models`**: the full model list, with pricing, context length, input/output modalities, and supported parameters.
 2. **`GET /api/v1/benchmarks?source=artificial-analysis`** and **`GET /api/v1/benchmarks?source=openrouter`**: two calls cover every benchmark this app uses, since each source returns every metric it tracks in one shot, with no per-task-type refetching.
 3. Everything is joined client-side on `canonical_slug` / `model_permaslug`, filtered by your task's modality needs and your price ceiling, and sorted by whichever of best-quality / balanced / cheapest you picked. **A model with no benchmark coverage is shown as "n/a", never as a zero**, because unmeasured and measured-and-bad are different facts, and this app does not collapse them into one.
-4. The top 15 candidates, your task description, and your preferences go to a free model as a chat completion. If that model is rate-limited or (a real thing you'll hit) restricts itself to "agentic harness" callers only, the app automatically tries the next free model, ranked by reasoning support and context length, until one answers or the free roster is exhausted.
+4. The top 15 candidates, your task description, and your preferences go to a free model as a chat completion. If that model is rate-limited or (a real thing you'll hit) restricts itself to "agentic harness" callers only, the app automatically tries the next free model, ranked by reasoning support and context length, until one answers or **five attempts** have been made — the free roster is big enough that an unbounded retry loop is a spinner, not a fix. If no free model answers, the status line names every model tried and the last real error, rather than a vague "something went wrong".
 5. The response is rendered as-is: prose, not a parsed score.
 
 Steps 1-3 run entirely in your browser against `openrouter.ai`. There is no server anywhere in this project; CORS on OpenRouter's API is wide open, which is what makes that possible, and it's also why the key you enter is never seen by anything this project runs. See [SECURITY.md](SECURITY.md).
 
 ## Using it
 
-Open `index.html` in a browser (a static file server works fine; `python -m http.server` or the published GitHub Pages site both do), paste an [OpenRouter API key](https://openrouter.ai/settings/keys), pick a task preset (or write your own), and click **Find models**. The price ceiling defaults to $0/M in both directions (free models only), and every field is editable.
+Open `index.html` in a browser (a static file server works fine; `python -m http.server` or the published GitHub Pages site both do), paste an [OpenRouter API key](https://openrouter.ai/settings/keys), pick a task preset (or write your own), and click **Find models**. The price ceiling defaults to $0/M in both directions (free models only — models billed per song, clip, or image are excluded, since a $0 token price does not make them free), and every field is editable.
 
 ### Task presets
 
@@ -48,7 +48,11 @@ Coding, Code Review, General Chat / Assistant, Reasoning / Math, Agentic / Tool 
 
 **Why does the fallback ladder retry on a 403?** A free model can reject a request with 403 because that specific model restricts itself to "agentic harness" callers (observed live from `thinkingmachines/inkling-small:free`), which is a per-model policy, not a broken key. Only a 401 (an actually bad key) stops the ladder; everything else advances to the next free model. See `isRetryableJudgeStatus` in `lib/match.js`.
 
+**What happens if I click Find models twice, or hit Stop?** Only one search runs at a time. Starting a new search supersedes the previous one, so a slower earlier search cannot render its table or verdict over a newer one. **Stop** ends the running search and prevents any later table, verdict, or status write from that run, even if its requests complete anyway. (`tests/app-cancellation.test.mjs` covers this by driving the real `app.js` in a headless DOM.)
+
 **Why do a few models show a price of "?"** OpenRouter's own meta-routers (`openrouter/auto`, `openrouter/fusion`, and similar) report a price of `"-1"`, meaning "depends on whichever model actually gets picked." This app treats a negative price as unknown, not as a real (and nonsensical) negative dollar figure, and unknown prices are excluded from any price-ceiling search the same way a missing price would be.
+
+**Why doesn't the fallback ladder trust the `:free` suffix?** Because a suffix is a name, not a price. A model earns a rung only when its catalog pricing declares both token directions as `0` and no auxiliary or conditional charge. A `:free`-suffixed entry whose pricing says otherwise, or whose pricing is missing or unparseable, is left out — a missing price is not evidence of a free one, which is the same rule the `"-1"` sentinel above follows. Verified against the live catalog: all 17 `:free` models declare `0` in both directions, so this excludes nothing today and stops a reprice from silently billing you.
 
 ## Contributing, security
 
