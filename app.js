@@ -8,6 +8,7 @@ import {
   filterByPriceCeiling,
   sortCandidates,
   rankFreeModels,
+  rankForTask,
   nextFallbackModel,
   buildJudgeMessages,
   isRetryableJudgeStatus,
@@ -173,7 +174,14 @@ async function fetchAllData(apiKey) {
 }
 
 async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shortlist) {
-  const ranked = rankFreeModels(allModelsRaw);
+  // The ladder is ranked from the raw /models rows, which carry each free
+  // model's declared input/output modalities. Put the models that can actually
+  // serve this task first: for an OCR or vision preset, a text-only free model
+  // cannot read the image the task hands it, so letting it hold a higher rung
+  // spends a rung and an HTTP round trip on a request that can only fail or
+  // produce an answer outside the user's requirements. Ranking, not filtering:
+  // a model whose modalities are simply undeclared stays where it was.
+  const ranked = rankForTask(rankFreeModels(allModelsRaw), preferences.preset);
   const tried = [];
   const messages = buildJudgeMessages(taskDescription, preferences, shortlist);
   let lastErr = null;
