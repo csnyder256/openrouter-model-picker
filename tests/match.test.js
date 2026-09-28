@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import test from "node:test";
 import { test } from "node:test";
-import { buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, isRetryableJudgeStatus, isTaskCompatible, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from "../lib/match.js";
+import { TASK_PRESETS, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, isRetryableJudgeStatus, isTaskCompatible, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
 
 test("perMillion converts per-token USD strings to per-million USD", () => {
   assert.equal(perMillion("0.0000025"), 2.5);
@@ -177,17 +176,11 @@ test("sortCandidates: balanced breaks ties between multiple free candidates by r
 
 
 test("rankFreeModels only returns :free models, reasoning-capable ones first", () => {
-  const free = (id, context_length, supported_parameters) => ({
-    id,
-    context_length,
-    supported_parameters,
-    pricing: { prompt: "0", completion: "0" },
-  });
   const models = [
-    { id: "a/no-free", context_length: 999999, supported_parameters: ["reasoning"], pricing: { prompt: "0", completion: "0" } },
-    free("a/plain:free", 8000, []),
-    free("a/reasoner:free", 4000, ["reasoning"]),
-    free("a/bigger-plain:free", 16000, []),
+    { id: "a/no-free", context_length: 999999, supported_parameters: ["reasoning"] },
+    { id: "a/plain:free", context_length: 8000, supported_parameters: [] },
+    { id: "a/reasoner:free", context_length: 4000, supported_parameters: ["reasoning"] },
+    { id: "a/bigger-plain:free", context_length: 16000, supported_parameters: [] },
   ];
   const ranked = rankFreeModels(models);
   assert.deepEqual(
@@ -729,4 +722,82 @@ test("buildJudgeMessages truncates the description after flattening, not before"
   const msgs = buildJudgeMessages("write code", {}, shortlist);
   const block = msgs[1].content.split("Candidate models:\n")[1];
   assert.equal(block.split("\n").length, 1);
+});
+
+test("sortCandidates: a preset whose metric is null still ranks, it does not return arrival order", () => {
+  // Image Generation / Text-to-Speech used to declare primaryMetric: null,
+  // which made every "Optimize for" mode return the /models arrival order
+  // unchanged. No benchmark here measures image fidelity or speech quality, so
+  // those presets now rank on the general intelligence index as a proxy. This
+  // test covers the null-metric path directly, so a future preset that
+  // legitimately has no metric cannot silently regress to unsorted output
+  // either.
+  const noMetricPreset = { id: "synthetic", primaryMetric: null };
+  const candidates = [
+    { id: "z/weak", benchmarks: { intelligenceIndex: 20, codingIndex: null }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "a/strong", benchmarks: { intelligenceIndex: 88, codingIndex: null }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "m/mid", benchmarks: { intelligenceIndex: 55, codingIndex: null }, pricing: { promptPerM: 0, completionPerM: 0 } },
+  ];
+  for (const pref of ["quality", "balanced", "cheapest"]) {
+    assert.deepEqual(
+      sortCandidates(candidates, noMetricPreset, pref).map((c) => c.id),
+      ["a/strong", "m/mid", "z/weak"],
+      `"${pref}" must rank a null-metric preset by quality, not arrival order`
+    );
+  }
+});
+
+
+test("sortCandidates: cheapest breaks a price tie by quality, never leaving equal-price models unordered", () => {
+  // Free-only is the app's default, so every candidate ties at $0/M. Before
+  // this, "Cheapest" fell back to the order /models happened to arrive in,
+  // which for a free-only search is the whole result set.
+  const preset = findPreset("coding");
+  const candidates = [
+    { id: "z/weak", benchmarks: { codingIndex: 20 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "a/strong", benchmarks: { codingIndex: 90 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "m/mid", benchmarks: { codingIndex: 50 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+  ];
+  assert.deepEqual(
+    sortCandidates(candidates, preset, "cheapest").map((c) => c.id),
+    ["a/strong", "m/mid", "z/weak"]
+  );
+});
+
+
+test("sortCandidates: fully tied candidates resolve deterministically, independent of arrival order", () => {
+  // Same metric, same price, different context: the tie must resolve the same
+  // way no matter what order the API returned the models in.
+  const preset = findPreset("general-chat");
+  const tied = [
+    { id: "b/short", contextLength: 100, benchmarks: { intelligenceIndex: 50 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+    { id: "a/long", contextLength: 900, benchmarks: { intelligenceIndex: 50 }, pricing: { promptPerM: 0, completionPerM: 0 } },
+  ];
+  const forward = sortCandidates(tied, preset, "quality").map((c) => c.id);
+  const reversed = sortCandidates(tied.slice().reverse(), preset, "quality").map((c) => c.id);
+  assert.deepEqual(forward, reversed);
+  assert.equal(forward[0], "a/long"); // larger context wins the tie
+});
+
+
+test("TASK_PRESETS: every preset names a real benchmark metric", () => {
+  // A null primaryMetric is a silent trap: the sort modes all no-op and the
+  // judge shortlist is sliced from arbitrary order. Every shipped preset must
+  // name a metric that mergeModelsWithBenchmarks actually populates -- which
+  // for the two output-modality presets is a general proxy, since no benchmark
+  // in this app measures image or speech quality.
+  const knownMetrics = new Set([
+    "intelligenceIndex",
+    "codingIndex",
+    "agenticIndex",
+    "gpqaAccuracy",
+    "tauBenchAccuracy",
+    "searchAvg",
+  ]);
+  for (const preset of TASK_PRESETS) {
+    assert.ok(
+      knownMetrics.has(preset.primaryMetric),
+      `preset "${preset.id}" declares primaryMetric "${preset.primaryMetric}", which is not a populated benchmark field`
+    );
+  }
 });
