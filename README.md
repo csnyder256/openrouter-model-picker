@@ -68,3 +68,11 @@ MIT. See [LICENSE](LICENSE).
 [Latest release](https://github.com/csnyder256/openrouter-model-picker/releases/latest) · [Install, deploy and upgrade](DEPLOYMENT.md)
 
 Release assets include checksums and version-specific notes.
+
+## Comparisons and saved shortlists
+
+Select up to six models in search results to see prices, context and the exact ranking formula side by side. Shared comparison links and JSON/CSV reports contain public metrics, the task preset and ranking settings only. They exclude the API key, private task text, saved names and judge prose. Links open without a key or a model call.
+
+Save, load, rename and delete shortlists in browser storage. JSON export/import provides a portable backup when storage is unavailable. Snapshots retain their UTC capture date and are marked unverified until a new live search refreshes all selected models. Missing or removed models are reported and never silently substituted. Unknown measurements stay unknown. General intelligence is explicitly identified as a proxy for tasks it does not measure.
+
+“Try offline example” uses fictional models and illustrative values; it makes no network calls. Print creates a comparison report. A shared snapshot is user-supplied data, not a signed or current catalog.

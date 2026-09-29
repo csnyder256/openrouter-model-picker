@@ -101,3 +101,28 @@ td.na { color: var(--ink-2); font-style: italic; }
 
 footer { margin-top: 2rem; font-size: 0.8rem; color: var(--ink-2); }
 footer a { color: var(--ink-2); }
+
+#comparison-panel { border-top: 3px solid var(--accent, #416de2); }
+#comparison-panel h2 { flex:1; }
+#comparison-panel details { font-size:.85rem; }
+#comparison-panel td p { margin:.25rem 0; min-width:16rem; }
+#comparison-panel button { white-space:nowrap; }
+#comparison-link { width:100%; margin:.5rem 0; }
+.sr-only { position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0); }
+@media print {
+  #config-panel,#query-panel,#rec-panel,#results-panel,footer,#comparison-panel button,
+  #comparison-panel .field-row,#comparison-panel .field,#comparison-link { display:none!important; }
+  body, main, .panel { background:white!important;color:black!important;border:0!important; }
+  #comparison-panel { display:block!important; }
+  #comparison-panel details > * { display:block; }
+}
+
+#comparison-panel td {white-space:normal;vertical-align:top}
+#comparison-panel td:first-child {min-width:13rem}
+#comparison-panel td:first-child strong,#comparison-panel td:first-child code {display:block;overflow-wrap:anywhere}
+#comparison-panel td:first-child button {margin-top:.5rem}
+#comparison-panel td:last-child {min-width:20rem;max-width:26rem}
+#comparison-panel td p {min-width:0;white-space:normal}
+#comparison-panel table {min-width:850px}
+
+#comparison-panel td:first-child button { display:block; margin-top:.4rem; }
