@@ -1,3 +1,4 @@
+import { initComparisons } from "./lib/comparisons-ui.js";
 import { fetchModels, fetchBenchmarks, chatCompletion, OpenRouterError, isAbortError } from "./lib/or-client.js";
 import { renderMarkdownLite, escapeHtml } from "./lib/markdown-lite.js";
 import {
@@ -59,21 +60,21 @@ let lastSortDir = 1;
 let searchController = null;
 
 function initApiKey() {
-  const saved = localStorage.getItem(KEY_STORAGE);
-  if (saved) {
-    el.apiKey.value = saved;
-    el.keyStatus.textContent = "Key loaded from this browser's local storage.";
-  }
+  try {
+    const saved = localStorage.getItem(KEY_STORAGE);
+    if (saved) { el.apiKey.value = saved; el.keyStatus.textContent = "Key loaded from this browser's local storage."; }
+  } catch { el.keyStatus.textContent = "Browser storage unavailable. A key can be used for this session."; }
   el.apiKey.addEventListener("change", () => {
-    if (el.apiKey.value) {
-      localStorage.setItem(KEY_STORAGE, el.apiKey.value);
-      el.keyStatus.textContent = "Key saved to this browser's local storage.";
-    }
+    try {
+      if (el.apiKey.value) localStorage.setItem(KEY_STORAGE, el.apiKey.value);
+      else localStorage.removeItem(KEY_STORAGE);
+      el.keyStatus.textContent = el.apiKey.value ? "Key saved to this browser's local storage." : "Key forgotten.";
+    } catch { el.keyStatus.textContent = "Key retained for this session only; browser storage unavailable."; }
   });
   el.forgetKey.addEventListener("click", () => {
-    localStorage.removeItem(KEY_STORAGE);
     el.apiKey.value = "";
-    el.keyStatus.textContent = "Key forgotten.";
+    try { localStorage.removeItem(KEY_STORAGE); el.keyStatus.textContent = "Key forgotten."; }
+    catch { el.keyStatus.textContent = "Session key cleared. Stored keys cannot be removed while browser storage is unavailable."; }
   });
 }
 
@@ -159,6 +160,7 @@ function renderTable(candidates) {
       <td class="num ${c.benchmarks.tauBenchAccuracy == null ? "na" : ""}">${fmtPct(c.benchmarks.tauBenchAccuracy) || "n/a"}</td>
       <td class="num ${c.benchmarks.searchAvg == null ? "na" : ""}">${fmtPct(c.benchmarks.searchAvg) || "n/a"}</td>
     `;
+    comparisons.addControl(tr, c);
     el.tbody.appendChild(tr);
   }
   el.resultsCount.textContent = `Showing ${candidates.length} model${candidates.length === 1 ? "" : "s"}.`;
@@ -289,6 +291,7 @@ async function onFindModels() {
     candidates = filterByPriceCeiling(candidates, prefs.maxPromptPerM, prefs.maxCompletionPerM);
     candidates = sortCandidates(candidates, prefs.preset, prefs.qualityPreference);
 
+    comparisons.refresh(merged);
     lastCandidates = candidates;
     lastSortKey = null;
     renderTable(candidates);
@@ -351,6 +354,7 @@ function onStopSearch() {
 
 initApiKey();
 initTaskControls();
+const comparisons = initComparisons(readPreferences);
 initTableSort();
 el.findBtn.addEventListener("click", onFindModels);
 if (el.stopBtn) el.stopBtn.addEventListener("click", onStopSearch);

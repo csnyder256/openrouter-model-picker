@@ -91,6 +91,7 @@
       <table id="results-table">
         <thead>
           <tr>
+            <th>Compare</th>
             <th data-key="name">Model</th>
             <th data-key="pricing.promptPerM" class="num">$/M in</th>
             <th data-key="pricing.completionPerM" class="num">$/M out</th>
@@ -106,6 +107,33 @@
         <tbody></tbody>
       </table>
     </div>
+  </section>
+
+  <section class="panel" id="comparison-panel" aria-labelledby="comparison-title">
+    <div class="field-row"><h2 id="comparison-title">Compare and keep your shortlist</h2><button type="button" class="secondary" id="comparison-demo">Try offline example</button></div>
+    <p>Compare up to six models, inspect the ranking formula, and share a public snapshot. Links and exports exclude your API key, task description and judge response. Saved names stay in this browser.</p>
+    <div class="field-row">
+      <div class="field"><label for="comparison-preset">Explain for task</label><select id="comparison-preset"></select></div>
+      <div class="field"><label for="comparison-mode">Ranking</label><select id="comparison-mode"><option value="quality">Best quality</option><option value="balanced">Quality per dollar</option><option value="cheapest">Cheapest</option></select></div>
+    </div>
+    <div id="comparison-content"></div>
+    <div class="field-row">
+      <button type="button" id="comparison-share" data-requires-models>Copy share link</button>
+      <button type="button" id="comparison-json" class="secondary" data-requires-models>Export JSON</button>
+      <button type="button" id="comparison-csv" class="secondary" data-requires-models>Export CSV</button>
+      <button type="button" id="comparison-print" class="secondary" data-requires-models>Print report</button>
+      <button type="button" id="comparison-clear" class="secondary">Clear</button>
+    </div>
+    <label for="comparison-link" class="sr-only">Share link containing public data</label><input id="comparison-link" readonly hidden>
+    <div class="field-row">
+      <div class="field"><label for="shortlist-name">Private shortlist name</label><input id="shortlist-name" maxlength="80" placeholder="My coding shortlist"></div>
+      <button type="button" id="shortlist-save" data-requires-models>Save shortlist</button>
+      <div class="field"><label for="saved-shortlists">Saved in this browser</label><select id="saved-shortlists"></select></div>
+      <button type="button" id="shortlist-rename" class="secondary">Rename</button>
+      <button type="button" id="shortlist-delete" class="secondary">Delete saved</button>
+    </div>
+    <div class="field"><label for="comparison-import">Import comparison JSON</label><input type="file" accept=".json,application/json" id="comparison-import"></div>
+    <p class="status" id="comparison-status" role="status" aria-live="polite"></p>
   </section>
 
   <footer>
