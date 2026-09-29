@@ -1,0 +1,25 @@
+{
+  "name": "openrouter-model-picker",
+  "package_json": [
+    "package.json"
+  ],
+  "version_patterns": {},
+  "bundle": "static",
+  "include": [
+    "index.html",
+    "app.js",
+    "styles.css",
+    "lib",
+    "og.png",
+    "LICENSE",
+    "README.md",
+    "VERSION",
+    "release.json",
+    "DEPLOYMENT.md",
+    "Dockerfile",
+    "compose.yml",
+    "deploy",
+    "docs/releases",
+    "scripts"
+  ]
+}

@@ -1,0 +1,10 @@
+*
+!Dockerfile
+!index.html
+!app.js
+!styles.css
+!og.png
+!lib/
+!lib/**
+!deploy/
+!deploy/nginx.conf
