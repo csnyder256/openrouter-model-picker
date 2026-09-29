@@ -1,0 +1,8 @@
+services:
+  picker:
+    build: .
+    ports: ["127.0.0.1:${PICKER_PORT:-8080}:8080"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
