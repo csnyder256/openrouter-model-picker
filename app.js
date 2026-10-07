@@ -168,13 +168,25 @@ function renderTable(candidates) {
 
 function initTableSort() {
   el.thead.addEventListener("click", (e) => {
+    // The sortable headers are real <button>s inside their <th>, so this
+    // delegated handler fires for a mouse click and for the keyboard
+    // activation a button already gets (Enter/Space). The non-sortable
+    // "Compare" header has no `data-key` and is deliberately inert.
     const th = e.target.closest("th[data-key]");
     if (!th) return;
     const key = th.dataset.key;
     lastSortDir = lastSortKey === key ? -lastSortDir : -1;
     lastSortKey = key;
-    for (const h of el.thead.querySelectorAll("th")) h.classList.remove("sorted");
+    // Expose the active sort to assistive tech, not just sighted users. The
+    // direction must describe what is actually rendered, so it comes from
+    // `lastSortDir` (the same value the comparator multiplies by): -1 renders
+    // descending for both strings and numbers, +1 ascending.
+    for (const h of el.thead.querySelectorAll("th[data-key]")) {
+      h.classList.remove("sorted");
+      h.setAttribute("aria-sort", "none");
+    }
     th.classList.add("sorted");
+    th.setAttribute("aria-sort", lastSortDir === 1 ? "ascending" : "descending");
     const sorted = lastCandidates.slice().sort((a, b) => {
       const va = getPath(a, key);
       const vb = getPath(b, key);
