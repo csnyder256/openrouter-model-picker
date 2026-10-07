@@ -35,7 +35,7 @@
       </div>
       <button type="button" class="secondary" id="forget-key">Forget key</button>
     </div>
-    <p class="status" id="key-status">No key saved yet. Get one at <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/settings/keys</a>.</p>
+    <p class="status" id="key-status" role="status">No key saved yet. Get one at <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/settings/keys</a>.</p>
   </section>
 
   <section class="panel" id="query-panel">
@@ -76,7 +76,7 @@
       <button type="button" id="find-models">Find models</button>
       <button type="button" class="secondary" id="stop-models" hidden>Stop</button>
     </div>
-    <p class="status" id="query-status"></p>
+    <p class="status" id="query-status" role="status"></p>
   </section>
 
   <section class="panel" id="rec-panel" hidden>
@@ -86,22 +86,22 @@
 
   <section class="panel" id="results-panel" hidden>
     <h2>All matching models</h2>
-    <p class="status" id="results-count"></p>
+    <p class="status" id="results-count" role="status"></p>
     <div class="table-wrap">
       <table id="results-table">
         <thead>
           <tr>
-            <th>Compare</th>
-            <th data-key="name">Model</th>
-            <th data-key="pricing.promptPerM" class="num">$/M in</th>
-            <th data-key="pricing.completionPerM" class="num">$/M out</th>
-            <th data-key="contextLength" class="num">Context</th>
-            <th data-key="benchmarks.intelligenceIndex" class="num">Intelligence</th>
-            <th data-key="benchmarks.codingIndex" class="num">Coding</th>
-            <th data-key="benchmarks.agenticIndex" class="num">Agentic</th>
-            <th data-key="benchmarks.gpqaAccuracy" class="num">GPQA</th>
-            <th data-key="benchmarks.tauBenchAccuracy" class="num">Tau-bench</th>
-            <th data-key="benchmarks.searchAvg" class="num">Search</th>
+            <th scope="col">Compare</th>
+            <th scope="col" data-key="name" aria-sort="none"><button type="button">Model</button></th>
+            <th scope="col" data-key="pricing.promptPerM" class="num" aria-sort="none"><button type="button">$/M in</button></th>
+            <th scope="col" data-key="pricing.completionPerM" class="num" aria-sort="none"><button type="button">$/M out</button></th>
+            <th scope="col" data-key="contextLength" class="num" aria-sort="none"><button type="button">Context</button></th>
+            <th scope="col" data-key="benchmarks.intelligenceIndex" class="num" aria-sort="none"><button type="button">Intelligence</button></th>
+            <th scope="col" data-key="benchmarks.codingIndex" class="num" aria-sort="none"><button type="button">Coding</button></th>
+            <th scope="col" data-key="benchmarks.agenticIndex" class="num" aria-sort="none"><button type="button">Agentic</button></th>
+            <th scope="col" data-key="benchmarks.gpqaAccuracy" class="num" aria-sort="none"><button type="button">GPQA</button></th>
+            <th scope="col" data-key="benchmarks.tauBenchAccuracy" class="num" aria-sort="none"><button type="button">Tau-bench</button></th>
+            <th scope="col" data-key="benchmarks.searchAvg" class="num" aria-sort="none"><button type="button">Search</button></th>
           </tr>
         </thead>
         <tbody></tbody>

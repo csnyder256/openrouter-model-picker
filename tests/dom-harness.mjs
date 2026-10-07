@@ -24,6 +24,7 @@ export class FakeElement {
     };
     this.dataset = {};
     this.style = {};
+    this.attributes = {};
     this.hidden = false;
     this.disabled = false;
     this.value = "";
@@ -45,6 +46,11 @@ export class FakeElement {
     this.listeners.get(type).push(fn);
   }
   querySelectorAll() { return this.allResults; }
+  // Attribute surface for the bits of the app that set ARIA state (the
+  // sortable table headers). Purely additive: nothing in the app relied on it
+  // before, and the previous behaviour (no such method) would have thrown.
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; }
   querySelector(selector) {
     if (selector === "#results-table tbody") return this.tbody || null;
     if (selector === "#results-table thead") return this.thead || null;
