@@ -13,6 +13,7 @@ import {
   nextFallbackModel,
   buildJudgeMessages,
   isRetryableJudgeStatus,
+  judgeAnswer,
   resolveTaskDescription,
   JUDGE_ATTEMPT_LIMIT,
   beginSearch,
@@ -216,8 +217,14 @@ async function runJudge(apiKey, allModelsRaw, taskDescription, preferences, shor
     tried.push(candidate.id);
     try {
       const result = await chatCompletion(apiKey, candidate.id, messages, signal);
-      const text = result.choices?.[0]?.message?.content || "(empty response)";
-      return { modelId: candidate.id, text, attempts: tried };
+      // A 200 is not the same thing as an answer. A response with no usable
+      // prose (an empty or missing message, or a body carrying an error) must
+      // advance the ladder like any other failed attempt, not be returned as
+      // the recommendation -- otherwise the search stops on the free model
+      // that failed and shows placeholder text where the verdict should be.
+      const answer = judgeAnswer(result);
+      if (answer.ok) return { modelId: candidate.id, text: answer.text, attempts: tried };
+      lastErr = new Error(answer.reason);
     } catch (err) {
       if (isAbortError(err, signal)) throw err; // cancelled: not a judge failure
       lastErr = err;
