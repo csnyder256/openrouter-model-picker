@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TASK_PRESETS, beginSearch, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, hasOutOfBandPricing, invalidateSearch, isCurrentSearch, isRetryableJudgeStatus, isTaskCompatible, isTrulyFree, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
+import { TASK_PRESETS, beginSearch, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, hasOutOfBandPricing, invalidateSearch, isCurrentSearch, isRetryableJudgeStatus, isTaskCompatible, isTrulyFree, judgeAnswer, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
 
 test("perMillion converts per-token USD strings to per-million USD", () => {
   assert.equal(perMillion("0.0000025"), 2.5);
@@ -981,4 +981,46 @@ test("conditional prices and malformed zero declarations cannot claim free", () 
     { prompt: " " }, { prompt: false },
   ]) assert.equal(isTrulyFree(model(pricing)), false);
   assert.equal(isTrulyFree(model({ overrides: [{ min_prompt_tokens: 1000, utc_start: 100, prompt: "0" }] })), true);
+});
+
+// --- A 200 is not the same thing as an answer -------------------------------
+// The judge ladder walks the ranked free models until one *answers*. A
+// `/chat/completions` that returns HTTP 200 with no usable prose is not an
+// answer, and treating it as one stops the ladder on exactly the free model
+// that failed and shows a placeholder where the verdict should be. These pin
+// the pure decision the ladder is built on.
+
+test("judgeAnswer accepts real prose unchanged", () => {
+  assert.deepEqual(
+    judgeAnswer({ choices: [{ message: { content: "Use acme/foo: it is cheapest." } }] }),
+    { ok: true, text: "Use acme/foo: it is cheapest." }
+  );
+});
+
+test("judgeAnswer rejects an empty or whitespace-only message as not an answer", () => {
+  assert.equal(judgeAnswer({ choices: [{ message: { content: "" } }] }).ok, false);
+  assert.equal(judgeAnswer({ choices: [{ message: { content: "   \n\t  " } }] }).ok, false);
+  assert.match(judgeAnswer({ choices: [{ message: { content: "" } }] }).reason, /empty response/);
+});
+
+test("judgeAnswer rejects a response with no choice or no message content", () => {
+  assert.equal(judgeAnswer({}).ok, false);
+  assert.equal(judgeAnswer(null).ok, false);
+  assert.equal(judgeAnswer({ choices: [] }).ok, false);
+  assert.equal(judgeAnswer({ choices: [{ message: {} }] }).ok, false);
+  assert.equal(judgeAnswer({ choices: [{ message: { content: null } }] }).ok, false);
+  assert.match(judgeAnswer({ choices: [{ message: {} }] }).reason, /no message content/);
+});
+
+test("judgeAnswer rejects a body that carries an error instead of a choice, and names it", () => {
+  const answer = judgeAnswer({ error: { message: "upstream provider unavailable" } });
+  assert.equal(answer.ok, false);
+  assert.match(answer.reason, /upstream provider unavailable/);
+  assert.match(judgeAnswer({ error: { metadata: { raw: "rate limited upstream" } } }).reason, /rate limited upstream/);
+});
+
+test("judgeAnswer rejects content in a shape the markdown renderer cannot use", () => {
+  const answer = judgeAnswer({ choices: [{ message: { content: [{ type: "text", text: "hi" }] } }] });
+  assert.equal(answer.ok, false);
+  assert.match(answer.reason, /unsupported shape/);
 });
