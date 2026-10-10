@@ -14,6 +14,7 @@ import {
   buildJudgeMessages,
   isRetryableJudgeStatus,
   resolveTaskDescription,
+  formatPricePerMillion,
   JUDGE_ATTEMPT_LIMIT,
   beginSearch,
   isCurrentSearch,
@@ -125,8 +126,12 @@ function getPath(obj, path) {
   return path.split(".").reduce((o, k) => (o == null ? null : o[k]), obj);
 }
 
+// Prices are rendered through the shared formatter so the table and the judge
+// prompt can never disagree about a price, and so a nonzero price below
+// $0.005/M (which `toFixed(2)` alone renders as "$0.00", the app's claim of
+// "free") is shown with enough precision to read as the paid price it is.
 function fmtPrice(v) {
-  return v == null ? "" : `$${v.toFixed(2)}`;
+  return formatPricePerMillion(v);
 }
 function fmtIndex(v) {
   return v == null ? "" : v.toFixed(1);

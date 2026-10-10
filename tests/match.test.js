@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TASK_PRESETS, beginSearch, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, hasOutOfBandPricing, invalidateSearch, isCurrentSearch, isRetryableJudgeStatus, isTaskCompatible, isTrulyFree, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
+import { TASK_PRESETS, beginSearch, buildJudgeMessages, candidatePromptLine, filterByPriceCeiling, filterByTask, findPreset, formatPricePerMillion, hasOutOfBandPricing, invalidateSearch, isCurrentSearch, isRetryableJudgeStatus, isTaskCompatible, isTrulyFree, mergeModelsWithBenchmarks, nextFallbackModel, perMillion, rankForTask, rankFreeModels, resolveTaskDescription, sortCandidates } from '../lib/match.js';
 
 test("perMillion converts per-token USD strings to per-million USD", () => {
   assert.equal(perMillion("0.0000025"), 2.5);
@@ -16,6 +16,40 @@ test("perMillion treats a negative price as unknown, not as a real negative doll
   // picked" (confirmed live). A negative number is never a real price.
   assert.equal(perMillion("-1"), null);
   assert.equal(perMillion("-0.0001"), null);
+});
+
+
+test("formatPricePerMillion never renders a nonzero price as $0.00", () => {
+  // $0.00 is this app's exact visual claim of "free". A paid model whose price
+  // is small enough to round to $0.00 at two decimals must not be shown as
+  // free -- the same "unmeasured is not zero" rule the module applies to a
+  // benchmark, applied to price. Live example (2026-10-10, 458 models):
+  // ~deepseek/deepseek-flash-latest declares a prompt price of $0.0038/M,
+  // which `toFixed(2)` alone renders as "$0.00".
+  assert.equal(formatPricePerMillion(0.0038), "$0.0038");
+  assert.notEqual(formatPricePerMillion(0.0038), "$0.00");
+  assert.equal(formatPricePerMillion(0.0049), "$0.0049");
+  assert.equal(formatPricePerMillion(0.00004), "$0.000040");
+
+  // The ordinary cases are unchanged: a real zero is still exactly $0.00, and
+  // anything at or above half a cent still prints at two decimals.
+  assert.equal(formatPricePerMillion(0), "$0.00");
+  assert.equal(formatPricePerMillion(2.5), "$2.50");
+  assert.equal(formatPricePerMillion(0.005), "$0.01");
+  assert.equal(formatPricePerMillion(150), "$150.00");
+
+  // Unknown is not a dollar figure: these render as nothing, and the callers
+  // turn that into "?" (table) or "unknown" (judge prompt), never "$0.00".
+  for (const unknown of [null, undefined, NaN, Infinity, -Infinity, -1, "0.0038"]) {
+    assert.equal(formatPricePerMillion(unknown), "", `expected no dollar figure for ${String(unknown)}`);
+  }
+
+  // The property itself, over the whole plausible live price range: a positive
+  // price is never the string "$0.00".
+  for (let perToken = 1e-12; perToken < 1e-4; perToken *= 1.5) {
+    const perM = perToken * 1_000_000;
+    if (perM > 0) assert.notEqual(formatPricePerMillion(perM), "$0.00", `$${perM}/M rendered as $0.00`);
+  }
 });
 
 
@@ -279,6 +313,27 @@ test("buildJudgeMessages never describes a model with an unknown price as $0.00"
   const msgs = buildJudgeMessages("write code", { qualityPreference: "quality" }, shortlist);
   assert.doesNotMatch(msgs[1].content, /\$0\.00/);
   assert.match(msgs[1].content, /unknown/);
+});
+
+
+test("buildJudgeMessages never tells the judge a nonzero price is $0.00/M", () => {
+  // The judge recommends from price, so "$0.00/M" on a paid model is a false
+  // claim it can act on. `~deepseek/deepseek-flash-latest` declares $0.0038/M
+  // in and $0.60/M out (live /models, 2026-10-10); `toFixed(2)` alone would
+  // have handed the judge "$0.00/M in" for it.
+  const shortlist = [
+    {
+      id: "~deepseek/deepseek-flash-latest",
+      name: "DeepSeek: DeepSeek Flash Latest",
+      description: "This model always redirects to the latest model in the DeepSeek Flash family.",
+      pricing: { promptPerM: 0.0038, completionPerM: 0.6 },
+      benchmarks: { intelligenceIndex: null, codingIndex: null, agenticIndex: null, gpqaAccuracy: null, tauBenchAccuracy: null, searchAvg: null },
+    },
+  ];
+  const content = buildJudgeMessages("write code", { qualityPreference: "quality" }, shortlist)[1].content;
+  assert.doesNotMatch(content, /\$0\.00\/M in/);
+  assert.match(content, /\$0\.0038\/M in/);
+  assert.match(content, /\$0\.60\/M out/);
 });
 
 // ---------------------------------------------------------------------------
