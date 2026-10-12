@@ -1,6 +1,7 @@
 import { initComparisons } from "./lib/comparisons-ui.js";
 import { fetchModels, fetchBenchmarks, chatCompletion, OpenRouterError, isAbortError } from "./lib/or-client.js";
 import { renderMarkdownLite, escapeHtml } from "./lib/markdown-lite.js";
+import { nextTaskDescription } from "./lib/task-preset.js";
 import {
   TASK_PRESETS,
   findPreset,
@@ -85,14 +86,21 @@ function initTaskControls() {
     opt.textContent = preset.label;
     el.taskPreset.appendChild(opt);
   }
-  el.taskPreset.value = "coding";
-  const applyPresetHint = () => {
-    const preset = findPreset(el.taskPreset.value);
-    if (preset && preset.id !== "custom") el.taskDesc.value = preset.hint;
-    else if (preset && preset.id === "custom" && !el.taskDesc.value) el.taskDesc.value = "";
+  // The description field is pre-filled with the selected preset's hint, so the
+  // field alone cannot say whether its text is a preset's hint or the user's own
+  // task. `lastPresetId` is the missing half -- the preset the field was last
+  // filled from -- and `nextTaskDescription` uses both to decide what the field
+  // should hold after a change. In particular it clears a leftover hint when the
+  // user moves to the custom preset, whose own hint is a placeholder rather than
+  // a task. See `lib/task-preset.js`.
+  let lastPresetId = null;
+  const applyPresetHint = (nextId) => {
+    el.taskDesc.value = nextTaskDescription(lastPresetId, nextId, el.taskDesc.value);
+    lastPresetId = nextId;
   };
-  el.taskPreset.addEventListener("change", applyPresetHint);
-  applyPresetHint();
+  el.taskPreset.addEventListener("change", () => applyPresetHint(el.taskPreset.value));
+  el.taskPreset.value = "coding";
+  applyPresetHint("coding");
 
   el.freeOnly.addEventListener("change", () => {
     const disabled = el.freeOnly.checked;
