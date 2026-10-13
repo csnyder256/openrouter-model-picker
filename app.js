@@ -245,11 +245,35 @@ function setSearchButtons(running) {
   if (el.stopBtn) el.stopBtn.hidden = !running;
 }
 
+// One status line, one writer at a time, and the error styling always agrees
+// with the text. Writing the message and the class separately is what let a
+// stale `err` outlive the message it belonged to: the rejected click below
+// styles its own message as an error, and a search that was already running
+// then wrote its normal outcome into the same line without clearing it.
+function setQueryStatus(text, isError = false) {
+  el.queryStatus.textContent = text;
+  el.queryStatus.classList.toggle("err", Boolean(isError));
+}
+
 async function onFindModels() {
+  // Everything that can stop this click from starting a search is checked
+  // BEFORE the click claims a search epoch, aborts a run that is in flight, or
+  // takes the results off the page. The README's contract is that *starting a
+  // new search* supersedes the previous one; a click that starts nothing is not
+  // a new search, so it must neither supersede a running one nor clear the
+  // table and verdict the user is reading. The API-key check was always
+  // pre-flight. The task-description check used to run after the page had
+  // already been cleared and the in-flight search already aborted, so selecting
+  // the custom preset with an empty description and clicking Find threw away
+  // both -- for a click that could never start a search in the first place.
   const apiKey = el.apiKey.value.trim();
   if (!apiKey) {
-    el.queryStatus.textContent = "Enter your OpenRouter API key above first.";
-    el.queryStatus.classList.add("err");
+    setQueryStatus("Enter your OpenRouter API key above first.", true);
+    return;
+  }
+  const prefs = readPreferences();
+  if (!prefs.taskDescription) {
+    setQueryStatus("Describe the task in the text box first.", true);
     return;
   }
 
@@ -267,23 +291,16 @@ async function onFindModels() {
   searchController = controller;
   const signal = controller.signal;
 
-  el.queryStatus.classList.remove("err");
   setSearchButtons(true);
   el.recPanel.hidden = true;
   el.resultsPanel.hidden = true;
 
   try {
-    const prefs = readPreferences();
-    if (!prefs.taskDescription) {
-      el.queryStatus.textContent = "Describe the task in the text box first.";
-      el.queryStatus.classList.add("err");
-      return; // finally restores the buttons for this, the current, run
-    }
     // Local, immediate feedback, then a long network wait. The status line is
     // written before any await so a slow fetch cannot leave the button
     // spinning with nothing to read; the later messages replace it because
     // they are only written by a run that still owns the epoch.
-    el.queryStatus.textContent = "Fetching live model list and benchmark data…";
+    setQueryStatus("Fetching live model list and benchmark data…");
     const { merged, rawModels } = await fetchAllData(apiKey, signal);
     if (!isCurrentSearch(epoch)) return;
 
@@ -299,11 +316,11 @@ async function onFindModels() {
     if (!isCurrentSearch(epoch)) return;
 
     if (!candidates.length) {
-      el.queryStatus.textContent = "No models matched. Try raising the price ceiling or a different task.";
+      setQueryStatus("No models matched. Try raising the price ceiling or a different task.");
       return;
     }
 
-    el.queryStatus.textContent = `Found ${candidates.length} matching models. Asking a free model to judge the shortlist…`;
+    setQueryStatus(`Found ${candidates.length} matching models. Asking a free model to judge the shortlist…`);
     const shortlist = candidates.slice(0, 15);
     const judged = await runJudge(apiKey, rawModels, prefs.taskDescription, prefs, shortlist, signal);
     if (!isCurrentSearch(epoch)) return;
@@ -312,14 +329,13 @@ async function onFindModels() {
       `<div class="who">Judged by ${escapeHtml(judged.modelId)}${judged.attempts.length > 1 ? ` (after ${judged.attempts.length - 1} unavailable free model${judged.attempts.length > 2 ? "s" : ""})` : ""}. This judging call cost $0.</div>` +
       renderMarkdownLite(judged.text);
     el.recPanel.hidden = false;
-    el.queryStatus.textContent = `Found ${candidates.length} matching models.`;
+    setQueryStatus(`Found ${candidates.length} matching models.`);
   } catch (err) {
     // A superseded or user-stopped run must not report anything: the abort is
     // the intended outcome of starting a new search, not a failure to surface.
     if (isAbortError(err, signal) || !isCurrentSearch(epoch)) return;
     console.error(err);
-    el.queryStatus.textContent = `Error: ${err.message}`;
-    el.queryStatus.classList.add("err");
+    setQueryStatus(`Error: ${err.message}`, true);
     // The table is already on screen by the time the judge runs, so a judging
     // failure must not leave the old recommendation (or a stale "asking a free
     // model…" status) sitting next to a fresh, unrelated table.
@@ -348,8 +364,7 @@ function onStopSearch() {
   if (stopped) stopped.abort();
   searchController = null;
   setSearchButtons(false);
-  el.queryStatus.classList.remove("err");
-  el.queryStatus.textContent = "Search stopped.";
+  setQueryStatus("Search stopped.");
 }
 
 initApiKey();
