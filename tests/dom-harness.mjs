@@ -20,6 +20,15 @@ export class FakeElement {
       add: (c) => this.classList._set.add(c),
       remove: (c) => this.classList._set.delete(c),
       contains: (c) => this.classList._set.has(c),
+      // The app writes its status line through `classList.toggle(name, force)`,
+      // so the harness has to honour the two-argument form the DOM does: the
+      // second argument is a force, not a default.
+      toggle: (c, force) => {
+        const want = force === undefined ? !this.classList._set.has(c) : Boolean(force);
+        if (want) this.classList._set.add(c);
+        else this.classList._set.delete(c);
+        return want;
+      },
       toString: () => [...this.classList._set].join(" "),
     };
     this.dataset = {};
