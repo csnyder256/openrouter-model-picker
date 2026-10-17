@@ -114,6 +114,23 @@ footer a { color: var(--ink-2); }
   #comparison-panel .field-row,#comparison-panel .field,#comparison-link { display:none!important; }
   body, main, .panel { background:white!important;color:black!important;border:0!important; }
   #comparison-panel { display:block!important; }
+  /* A printed report has to carry the caveats. Each row keeps its warnings --
+     "no measured primary benchmark; this is not a zero score", the unverified
+     snapshot notice, the proxy warning -- behind a disclosure, because six
+     rows of warnings is a wall of text on screen, and a closed <details>
+     prints shut. Current engines put everything after the <summary> in a
+     ::details-content pseudo-element and hide it with `content-visibility:
+     hidden`, so no `display` on the children can reveal it: measured in Chrome
+     155 against this page with print media emulated, `details > * {
+     display:block }` leaves the list's computed display already `block` while
+     the details' own box stays exactly its summary's height and the list is
+     not rendered. `content-visibility: visible` on that pseudo-element is what
+     reveals it. The `display` declaration is kept below rather than replaced:
+     it is the mechanism this rule was originally written against, it is inert
+     rather than harmful where the content is not hidden with `display`, and
+     dropping it would only matter on an engine that hides it that way and does
+     not support the pseudo-element. */
+  #comparison-panel details::details-content { content-visibility: visible; }
   #comparison-panel details > * { display:block; }
 }
 
